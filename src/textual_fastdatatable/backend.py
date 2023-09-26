@@ -11,15 +11,19 @@ from rich.text import Text
 
 
 class DataTableBackend(ABC):
+    
+    @abstractmethod
+    def __init__(self, data: Any) -> None:
+        pass
+    
     @property
     @abstractmethod
     def row_count(self) -> int:
         pass
 
     @property
-    @abstractmethod
     def column_count(self) -> int:
-        pass
+        return len(self.columns)
 
     @property
     @abstractmethod
@@ -53,7 +57,6 @@ class DataTableBackend(ABC):
 
 class ArrowBackend(DataTableBackend):
     def __init__(self, data: pa.Table) -> None:
-        super().__init__()
         self.data: pa.Table = data
         self.string_data: pa.Table = pa.Table.from_arrays(  # type: ignore
             arrays=[arr.cast("string") for arr in data.columns], names=data.column_names
@@ -90,7 +93,7 @@ class ArrowBackend(DataTableBackend):
 
     @property
     def column_content_widths(self) -> Sequence[int]:
-        return [pc.max(pc.utf8_length(arr)).as_py() for arr in self.string_data.columns]  # type: ignore
+        return [pc.max(pc.utf8_length(arr)).as_py() for arr in self.string_data.itercolumns()]  # type: ignore
 
     def get_row_at(self, index: int) -> Sequence[RenderableType]:
         row: Dict[str, RenderableType] = self.data.slice(index, length=1).to_pylist()[0]

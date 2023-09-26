@@ -23,6 +23,8 @@ pyarrow = "^13.0.0"
 pre-commit = "^3.3.1"
 textual-dev = "^1.0.1"
 pyarrow-stubs = { version="^10.0.1.6", python=">=3.8,<3.11" }
+pandas = { version="^2.1.1", python=">=3.9,<3.13" }
+numpy = { version="*", python=">=3.9,<3.13" }
 
 [tool.poetry.group.static.dependencies]
 black = "^23.3.0"

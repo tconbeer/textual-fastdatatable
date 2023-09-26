@@ -1577,6 +1577,7 @@ class DataTable(ScrollView, can_focus=True):
         ordered_columns = self.ordered_columns
         if row_index == -1:
             header_row: list[RenderableType] = [
+                # TODO: make this pluggable so we can override the native labels
                 column.label for column in ordered_columns
             ]
             # This is the cell where header and row labels intersect
