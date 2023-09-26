@@ -147,12 +147,8 @@ class ArrowBackend(DataTableBackend):
         return self._column_content_widths
 
     def _reset_content_widths(self) -> None:
+        self._string_data = None
         self._column_content_widths = []
-
-    def _maybe_update_content_width(self, column_index: int, w: int) -> None:
-        self._column_content_widths[column_index] = max(
-            self._column_content_widths[column_index], w
-        )
 
     def get_row_at(self, index: int) -> Sequence[RenderableType]:
         row: Dict[str, RenderableType] = self.data.slice(index, length=1).to_pylist()[0]
@@ -179,7 +175,8 @@ class ArrowBackend(DataTableBackend):
                 label,
                 column_string,  # type: ignore
             )
-        self._reset_content_widths()
+        if self._column_content_widths:
+            self._column_content_widths.append(len(str(default)))
         return self.data.num_columns - 1
 
     def append_rows(self, records: Iterable[Iterable[Any]]) -> list[int]:
@@ -193,10 +190,6 @@ class ArrowBackend(DataTableBackend):
             schema=self.data.schema,
         )
         self.data = pa.Table.from_batches([*old_rows, new_rows])  # type: ignore
-        self.string_data = pa.Table.from_arrays(  # type: ignore
-            arrays=[arr.cast("string") for arr in self.data.columns],
-            names=self.data.column_names,
-        )
         self._reset_content_widths()
         return indicies
 
@@ -206,10 +199,6 @@ class ArrowBackend(DataTableBackend):
         above = self.data.slice(0, row_index).to_batches()
         below = self.data.slice(row_index + 1).to_batches()
         self.data = pa.Table.from_batches([*above, *below])  # type: ignore
-        self.string_data = pa.Table.from_arrays(  # type: ignore
-            arrays=[arr.cast("string") for arr in self.data.columns],
-            names=self.data.column_names,
-        )
         self._reset_content_widths()
         pass
 
@@ -228,7 +217,8 @@ class ArrowBackend(DataTableBackend):
                 self.data.column_names[column_index],
                 pa.array(pycolumn, type=pa.string()),  # type: ignore
             )
-        self._reset_content_widths()
+        if self._column_content_widths:
+            self._column_content_widths[column_index] = max(len(str(value)), self._column_content_widths[column_index])
 
     def sort(
         self, by: list[tuple[str, Literal["ascending", "descending"]]] | str
