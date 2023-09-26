@@ -1,0 +1,47 @@
+name: Build and Publish Package
+
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - closed
+
+jobs:
+  publish-package:
+    if: ${{ github.event.pull_request.merged == true && startsWith(github.event.pull_request.head.ref, 'release/v') }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repo main branch
+        uses: actions/checkout@v3
+        with:
+          ref: main
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.10"
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          version: 1.6.1
+      - name: Configure poetry
+        run: poetry config --no-interaction pypi-token.pypi ${{ secrets.FASTDATATABLE_PYPI_TOKEN }}
+      - name: Get project Version
+        id: project_version
+        run: echo "project_version=$(poetry version --short)" >> $GITHUB_OUTPUT
+      - name: Build package
+        run: poetry build --no-interaction
+      - name: Publish package to PyPI
+        run: poetry publish --no-interaction
+      - name: Create a Github Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ steps.project_version.outputs.project_version }}
+          target_commitish: main
+          token: ${{ secrets.FASTDATATABLE_RELEASE_TOKEN }}
+          body_path: CHANGELOG.md
+          files: |
+            LICENSE
+            dist/*textual_fastdatatable*.whl
+            dist/*textual_fastdatatable*.tar.gz

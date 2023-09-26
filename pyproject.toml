@@ -22,7 +22,6 @@ pyarrow = "^13.0.0"
 [tool.poetry.group.dev.dependencies]
 pre-commit = "^3.3.1"
 textual-dev = "^1.0.1"
-pyarrow-stubs = { version="^10.0.1.6", python=">=3.8,<3.11" }
 pandas = { version="^2.1.1", python=">=3.9,<3.13" }
 numpy = { version="*", python=">=3.9,<3.13" }
 
@@ -30,7 +29,8 @@ numpy = { version="*", python=">=3.9,<3.13" }
 black = "^23.3.0"
 ruff = ">=0.0.285"
 mypy = "^1.2.0"
-types-pygments = "^2.16.0.0"
+pandas-stubs = { version="^2.1.1", python=">=3.9,<3.13" }
+pyarrow-stubs = { version="^10.0.1.6", python=">=3.8,<3.11" }
 
 [tool.poetry.group.test.dependencies]
 pytest = "^7.3.1"
@@ -45,7 +45,7 @@ target-version = "py38"
 [tool.mypy]
 python_version = "3.8"
 files = [
-    "src/textual_fastdatatable/**/*.py",
+    "src/**/*.py",
 ]
 mypy_path = "src:stubs"
 

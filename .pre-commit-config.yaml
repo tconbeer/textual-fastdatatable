@@ -1,0 +1,30 @@
+repos:
+  - repo: https://github.com/psf/black
+    rev: 23.7.0
+    hooks:
+      - id: black
+  - repo: https://github.com/charliermarsh/ruff-pre-commit
+    rev: v0.0.291
+    hooks:
+      - id: ruff
+        args: [ --fix, --exit-non-zero-on-fix ]
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.5.1
+    hooks:
+      - id: mypy
+        additional_dependencies:
+          - textual>=0.27.0
+          - pytest
+          - pyarrow-stubs
+          - pandas-stubs
+        exclude: "tests/snapshot_tests/"
+        args:
+          - "--disallow-untyped-calls"
+          - "--disallow-untyped-defs"
+          - "--disallow-incomplete-defs"
+          - "--strict-optional"
+          - "--warn-return-any"
+          - "--warn-no-return"
+          - "--warn-redundant-casts"
+          - "--no-warn-unused-ignores"
+          - "--allow-untyped-decorators"

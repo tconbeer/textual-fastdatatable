@@ -1,9 +1,11 @@
 from __future__ import annotations
+
 from pathlib import Path
-import pytest
 from typing import Sequence
-from textual_fastdatatable import ArrowBackend
+
 import pyarrow as pa
+import pytest
+from textual_fastdatatable import ArrowBackend
 
 
 @pytest.fixture
