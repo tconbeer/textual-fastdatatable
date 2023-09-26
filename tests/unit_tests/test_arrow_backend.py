@@ -87,7 +87,7 @@ def test_append_column(backend: ArrowBackend) -> None:
     backend.append_column("new")
     assert backend.column_count == 4
     assert backend.row_count == 5
-    assert backend.get_column_at(3) == [""] * backend.row_count
+    assert backend.get_column_at(3) == [None] * backend.row_count
 
     backend.append_column("def", default="zzz")
     assert backend.column_count == 5
@@ -96,18 +96,15 @@ def test_append_column(backend: ArrowBackend) -> None:
 
     assert backend.data.select(["first column", "two", "three"]).equals(original_table)
 
+
 def test_append_rows(backend: ArrowBackend) -> None:
     original_table = backend.data
-    backend.append_rows([
-        (6, "w", "x"), (7, "y", "z")
-    ])
+    backend.append_rows([(6, "w", "x"), (7, "y", "z")])
     assert backend.column_count == 3
     assert backend.row_count == 7
     assert backend.column_content_widths == [1, 8, 6]
 
-    backend.append_rows([
-        (999, "w"*12, "x"*15)
-    ])
+    backend.append_rows([(999, "w" * 12, "x" * 15)])
     assert backend.column_count == 3
     assert backend.row_count == 8
     assert backend.column_content_widths == [3, 12, 15]
@@ -132,13 +129,13 @@ def test_drop_row(backend: ArrowBackend) -> None:
 
 def test_update_cell(backend: ArrowBackend) -> None:
     backend.update_cell(0, 0, 0)
-    assert backend.get_column_at(0) == [0, 2, 3, 4 ,5]
+    assert backend.get_column_at(0) == [0, 2, 3, 4, 5]
     assert backend.row_count == 5
     assert backend.column_count == 3
     assert backend.column_content_widths == [1, 8, 6]
 
-    backend.update_cell(3, 1, "z"*50)
-    assert backend.get_row_at(3) == [4, "z"*50, "qux"]
+    backend.update_cell(3, 1, "z" * 50)
+    assert backend.get_row_at(3) == [4, "z" * 50, "qux"]
     assert backend.row_count == 5
     assert backend.column_count == 3
     assert backend.column_content_widths == [1, 50, 6]

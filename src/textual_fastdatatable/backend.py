@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Any, Dict, Iterable, Literal, Mapping, Sequence, Union
+from typing import Any, Dict, Iterable, Literal, Mapping, Sequence
 
 import pyarrow as pa
 import pyarrow.compute as pc
@@ -114,7 +114,7 @@ class ArrowBackend(DataTableBackend):
         return cls(tbl)
 
     @classmethod
-    def from_parquet(cls, path: Union[Path, str]) -> "ArrowBackend":
+    def from_parquet(cls, path: Path | str) -> "ArrowBackend":
         tbl = pq.read_table(str(path))
         return cls(tbl)
 
@@ -163,15 +163,16 @@ class ArrowBackend(DataTableBackend):
         Returns column index
         """
         if default is None:
-            default = ""
+            arr: pa.Array = pa.nulls(self.row_count)
+        else:
+            arr = pa.nulls(self.row_count, type=pa.string())
+            arr = arr.fill_null(str(default))
 
-        column_data = pa.array([default] * self.row_count)
-        column_string = pa.array([str(default)] * self.row_count, type=pa.string())
-        self.data = self.data.append_column(label, column_data)  # type: ignore
+        self.data = self.data.append_column(label, arr)
         if self._string_data is not None:
             self._string_data = self._string_data.append_column(
                 label,
-                column_string,  # type: ignore
+                arr,
             )
         if self._column_content_widths:
             self._column_content_widths.append(len(str(default)))
@@ -204,10 +205,11 @@ class ArrowBackend(DataTableBackend):
         column = self.data.column(column_index)
         pycolumn = column.to_pylist()
         pycolumn[row_index] = value
+        new_type = pa.string() if pa.types.is_null(column.type) else column.type
         self.data = self.data.set_column(
             column_index,
             self.data.column_names[column_index],
-            pa.array(pycolumn, type=column.type),  # type: ignore
+            pa.array(pycolumn, type=new_type),  # type: ignore
         )
         if self._string_data is not None:
             self._string_data = self._string_data.set_column(
