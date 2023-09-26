@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from textual.app import App, ComposeResult
-from textual_fastdatatable import DataTable, ArrowBackend
+from textual_fastdatatable import ArrowBackend, DataTable
 
 CSS_PATH = (Path(__file__) / "../datatable_hot_reloading.tcss").resolve()
 
@@ -44,13 +44,13 @@ class DataTableHotReloadingApp(App[None]):
         data = {
             # orig test set A width=10, we fake it with spaces
             "A         ": ["one", "three", "five"],
-            "B": ["two", "four", "six"]
+            "B": ["two", "four", "six"],
         }
         backend = ArrowBackend.from_pydict(data)
         yield DataTable(backend, zebra_stripes=True, cursor_type="row", fixed_columns=1)
 
     def on_mount(self) -> None:
-        dt = self.query_one(DataTable)
+        self.query_one(DataTable)
 
 
 if __name__ == "__main__":

@@ -2,7 +2,7 @@ from textual.app import App
 from textual.containers import Container, Horizontal, ScrollableContainer, Vertical
 from textual.screen import Screen
 from textual.widgets import Header, Label
-from textual_fastdatatable import DataTable, ArrowBackend
+from textual_fastdatatable import ArrowBackend, DataTable
 
 
 class LabeledBox(Container):

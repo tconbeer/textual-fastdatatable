@@ -1,6 +1,6 @@
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual_fastdatatable import DataTable
+from textual_fastdatatable import ArrowBackend, DataTable
 
 ROWS = [
     ("lane", "swimmer", "country", "time"),
@@ -26,24 +26,18 @@ class TableApp(App):
     ]
 
     def compose(self) -> ComposeResult:
-        yield DataTable()
+        backend = ArrowBackend.from_records(ROWS)
+        yield DataTable(backend)
 
     def on_mount(self) -> None:
         table = self.query_one(DataTable)
         table.focus()
-        rows = iter(ROWS)
-        column_labels = next(rows)
-        for column in column_labels:
-            table.add_column(column, key=column)
-
-        for row in rows:
-            table.add_row(*row, key=str(row[0]))
 
     def action_remove_row(self):
         table = self.query_one(DataTable)
-        table.remove_row("2")
-        table.remove_row("8")
-        table.remove_row("1")
+        table.remove_row(2)
+        table.remove_row(4)
+        table.remove_row(6)
 
 
 app = TableApp()

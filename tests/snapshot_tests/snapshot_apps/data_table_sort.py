@@ -1,6 +1,6 @@
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual_fastdatatable import DataTable
+from textual_fastdatatable import ArrowBackend, DataTable
 
 # Shuffled around a bit to exercise sorting.
 ROWS = [
@@ -23,20 +23,16 @@ class TableApp(App):
     ]
 
     def compose(self) -> ComposeResult:
-        yield DataTable()
+        backend = ArrowBackend.from_records(ROWS)
+        yield DataTable(backend)
 
     def on_mount(self) -> None:
         table = self.query_one(DataTable)
         table.focus()
-        rows = iter(ROWS)
-        column_labels = next(rows)
-        for column in column_labels:
-            table.add_column(column, key=column)
-        table.add_rows(rows)
 
     def action_sort(self):
         table = self.query_one(DataTable)
-        table.sort("time", "lane")
+        table.sort([("time", "ascending"), ("lane", "ascending")])
 
 
 app = TableApp()

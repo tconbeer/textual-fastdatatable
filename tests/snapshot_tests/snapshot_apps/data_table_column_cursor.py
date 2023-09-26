@@ -2,7 +2,7 @@ import csv
 import io
 
 from textual.app import App, ComposeResult
-from textual_fastdatatable import DataTable, ArrowBackend
+from textual_fastdatatable import ArrowBackend, DataTable
 
 CSV = """lane,swimmer,country,time
 4,Joseph Schooling,Singapore,50.39

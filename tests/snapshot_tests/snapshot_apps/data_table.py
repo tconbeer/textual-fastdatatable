@@ -1,5 +1,5 @@
 from textual.app import App, ComposeResult
-from textual_fastdatatable import DataTable, ArrowBackend
+from textual_fastdatatable import ArrowBackend, DataTable
 
 ROWS = [
     ("lane", "swimmer", "country", "time"),

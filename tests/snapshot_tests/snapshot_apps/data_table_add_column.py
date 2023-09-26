@@ -1,6 +1,6 @@
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual_fastdatatable import DataTable, ArrowBackend
+from textual_fastdatatable import ArrowBackend, DataTable
 
 MOVIES = [
     "Severance",
@@ -19,24 +19,15 @@ class AddColumn(App):
     ]
 
     def compose(self) -> ComposeResult:
-        backend = ArrowBackend.from_pydict(
-            {
-                "Movies": MOVIES,
-                "No Default": ["", "", "Hello!", "", "", "", ""],
-                "With Default": ["ABC"] * len(MOVIES),
-                "Long Default": ["01234567890123456789"] * len(MOVIES),
-            }
-        )
+        backend = ArrowBackend.from_pydict({"Movies": MOVIES})
         table = DataTable(backend)
 
-        # TODO: support mutable data
-        # column_key = table.add_column("No Default")
-        # table.add_column("With Default", default="ABC")
-        # table.add_column("Long Default", default="01234567890123456789")
+        column_idx = table.add_column("No Default")
+        table.add_column("With Default", default="ABC")
+        table.add_column("Long Default", default="01234567890123456789")
 
         # Ensure we can update a cell
-        # table.update_cell(row_keys[2], column_key, "Hello!")
-
+        table.update_cell(2, column_idx, "Hello!")
         yield table
 
 
