@@ -7,8 +7,6 @@ from typing import Any, Dict, Iterable, Literal, Mapping, Sequence, Union
 import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.parquet as pq
-from rich.console import RenderableType
-from rich.text import Text
 
 
 class DataTableBackend(ABC):
@@ -27,7 +25,7 @@ class DataTableBackend(ABC):
 
     @property
     @abstractmethod
-    def columns(self) -> Sequence[Text]:
+    def columns(self) -> Sequence[str]:
         """
         A list of column labels
         """
@@ -43,15 +41,15 @@ class DataTableBackend(ABC):
         pass
 
     @abstractmethod
-    def get_row_at(self, index: int) -> Sequence[RenderableType]:
+    def get_row_at(self, index: int) -> Sequence[Any]:
         pass
 
     @abstractmethod
-    def get_column_at(self, index: int) -> Sequence[RenderableType]:
+    def get_column_at(self, index: int) -> Sequence[Any]:
         pass
 
     @abstractmethod
-    def get_cell_at(self, row_index: int, column_index: int) -> RenderableType:
+    def get_cell_at(self, row_index: int, column_index: int) -> Any:
         pass
 
     @abstractmethod
@@ -129,8 +127,8 @@ class ArrowBackend(DataTableBackend):
         return self.data.num_columns
 
     @property
-    def columns(self) -> Sequence[Text]:
-        return [Text(label) for label in self.data.column_names]
+    def columns(self) -> Sequence[str]:
+        return self.data.column_names
 
     @property
     def column_content_widths(self) -> list[int]:
@@ -150,15 +148,15 @@ class ArrowBackend(DataTableBackend):
         self._string_data = None
         self._column_content_widths = []
 
-    def get_row_at(self, index: int) -> Sequence[RenderableType]:
-        row: Dict[str, RenderableType] = self.data.slice(index, length=1).to_pylist()[0]
+    def get_row_at(self, index: int) -> Sequence[Any]:
+        row: Dict[str, Any] = self.data.slice(index, length=1).to_pylist()[0]
         return list(row.values())
 
-    def get_column_at(self, column_index: int) -> Sequence[RenderableType]:
+    def get_column_at(self, column_index: int) -> Sequence[Any]:
         return self.data[column_index].to_pylist()
 
-    def get_cell_at(self, row_index: int, column_index: int) -> RenderableType:
-        return self.data[column_index][row_index].as_py()  # type: ignore
+    def get_cell_at(self, row_index: int, column_index: int) -> Any:
+        return self.data[column_index][row_index].as_py()
 
     def append_column(self, label: str, default: Any | None = None) -> int:
         """
@@ -194,7 +192,7 @@ class ArrowBackend(DataTableBackend):
         return indicies
 
     def drop_row(self, row_index: int) -> None:
-        if row_index < 0 or row_index > self.row_count:
+        if row_index < 0 or row_index >= self.row_count:
             raise IndexError(f"Can't drop row {row_index} of {self.row_count}")
         above = self.data.slice(0, row_index).to_batches()
         below = self.data.slice(row_index + 1).to_batches()
@@ -218,7 +216,9 @@ class ArrowBackend(DataTableBackend):
                 pa.array(pycolumn, type=pa.string()),  # type: ignore
             )
         if self._column_content_widths:
-            self._column_content_widths[column_index] = max(len(str(value)), self._column_content_widths[column_index])
+            self._column_content_widths[column_index] = max(
+                len(str(value)), self._column_content_widths[column_index]
+            )
 
     def sort(
         self, by: list[tuple[str, Literal["ascending", "descending"]]] | str

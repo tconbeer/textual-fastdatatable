@@ -1474,7 +1474,7 @@ class DataTable(ScrollView, can_focus=True):
         """The list of Columns in the DataTable, ordered as they appear on screen."""
         if self._ordered_columns is None:
             self._ordered_columns = [
-                Column(label=label, content_width=content_width, auto_width=True)
+                Column(label=Text(label), content_width=content_width, auto_width=True)
                 for label, content_width in zip(
                     self.backend.columns, self.backend.column_content_widths
                 )
