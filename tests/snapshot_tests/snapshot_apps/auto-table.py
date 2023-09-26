@@ -2,7 +2,7 @@ from textual.app import App
 from textual.containers import Container, Horizontal, ScrollableContainer, Vertical
 from textual.screen import Screen
 from textual.widgets import Header, Label
-from textual_fastdatatable import DataTable
+from textual_fastdatatable import DataTable, ArrowBackend
 
 
 class LabeledBox(Container):
@@ -39,20 +39,17 @@ class LabeledBox(Container):
 
 class StatusTable(DataTable):
     def __init__(self) -> None:
-        super().__init__()
+        backend = ArrowBackend.from_pydict(
+            {
+                "Foo": ["ABCDEFGH"] * 50,
+                "Bar": ["0123456789"] * 50,
+                "Baz": ["IJKLMNOPQRSTUVWXYZ"] * 50,
+            }
+        )
+        super().__init__(backend)
 
         self.cursor_type = "row"
         self.show_cursor = False
-        self.add_column("Foo")
-        self.add_column("Bar")
-        self.add_column("Baz")
-
-        for _ in range(50):
-            self.add_row(
-                "ABCDEFGH",
-                "0123456789",
-                "IJKLMNOPQRSTUVWXYZ",
-            )
 
 
 class Status(LabeledBox):

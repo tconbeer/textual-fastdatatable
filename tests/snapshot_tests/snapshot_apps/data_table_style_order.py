@@ -1,6 +1,8 @@
+from __future__ import annotations
+
 from textual.app import App, ComposeResult
 from textual.widgets import Label
-from textual_fastdatatable import DataTable
+from textual_fastdatatable import DataTable, ArrowBackend
 from typing_extensions import Literal
 
 data = [
@@ -14,14 +16,15 @@ def make_datatable(
     foreground_priority: Literal["css", "renderable"],
     background_priority: Literal["css", "renderable"],
 ) -> DataTable:
+    backend = ArrowBackend.from_pydict(
+        {"Movies": [f"[red on blue]{row}" for row in data]}
+    )
     table = DataTable(
+        backend,
         cursor_foreground_priority=foreground_priority,
         cursor_background_priority=background_priority,
     )
     table.zebra_stripes = True
-    table.add_column("Movies")
-    for row in data:
-        table.add_row(f"[red on blue]{row}")
     return table
 
 

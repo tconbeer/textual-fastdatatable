@@ -27,8 +27,13 @@ from __future__ import annotations
 import functools
 from dataclasses import dataclass
 from itertools import chain, zip_longest
-from operator import itemgetter
-from typing import Any, ClassVar, Generic, Iterable, NamedTuple, TypeVar, cast
+from typing import (
+    Any,
+    ClassVar,
+    Iterable,
+    NamedTuple,
+    cast,
+)
 
 import rich.repr
 from rich.console import RenderableType
@@ -36,7 +41,7 @@ from rich.padding import Padding
 from rich.protocol import is_renderable
 from rich.segment import Segment
 from rich.style import Style
-from rich.text import Text, TextType
+from rich.text import Text
 from textual import events
 from textual._cache import LRUCache
 from textual._segment_tools import line_crop
@@ -55,14 +60,14 @@ from textual.strip import Strip
 from textual.widget import PseudoClasses
 from typing_extensions import Literal, Self, TypeAlias
 
-CellCacheKey: TypeAlias = (
-    "tuple[RowKey, ColumnKey, Style, bool, bool, bool, int, PseudoClasses]"
-)
+from textual_fastdatatable import DataTableBackend
+
+CellCacheKey: TypeAlias = "tuple[int, int, Style, bool, bool, bool, int, PseudoClasses]"
 LineCacheKey: TypeAlias = "tuple[int, int, int, int, Coordinate, Coordinate, Style, CursorType, bool, int, PseudoClasses]"
-RowCacheKey: TypeAlias = "tuple[RowKey, int, Style, Coordinate, Coordinate, CursorType, bool, bool, int, PseudoClasses]"
+RowCacheKey: TypeAlias = "tuple[int, int, Style, Coordinate, Coordinate, CursorType, bool, bool, int, PseudoClasses]"
 CursorType = Literal["cell", "row", "column", "none"]
 """The valid types of cursors for [`DataTable.cursor_type`][textual.widgets.DataTable.cursor_type]."""
-CellType = TypeVar("CellType")
+CellType = RenderableType
 
 CELL_X_PADDING = 2
 
@@ -82,87 +87,6 @@ class RowDoesNotExist(Exception):
 class ColumnDoesNotExist(Exception):
     """Raised when the column index or column key provided does not exist
     in the DataTable (e.g. out of bounds index, invalid key)"""
-
-
-class DuplicateKey(Exception):
-    """The key supplied already exists.
-
-    Raised when the RowKey or ColumnKey provided already refers to
-    an existing row or column in the DataTable. Keys must be unique."""
-
-
-@functools.total_ordering
-class StringKey:
-    """An object used as a key in a mapping.
-
-    It can optionally wrap a string,
-    and lookups into a map using the object behave the same as lookups using
-    the string itself."""
-
-    value: str | None
-
-    def __init__(self, value: str | None = None):
-        self.value = value
-
-    def __hash__(self):
-        # If a string is supplied, we use the hash of the string. If no string was
-        # supplied, we use the default hash to ensure uniqueness amongst instances.
-        return hash(self.value) if self.value is not None else id(self)
-
-    def __eq__(self, other: object) -> bool:
-        # Strings will match Keys containing the same string value.
-        # Otherwise, you'll need to supply the exact same key object.
-        if isinstance(other, str):
-            return self.value == other
-        elif isinstance(other, StringKey):
-            if self.value is not None and other.value is not None:
-                return self.value == other.value
-            else:
-                return hash(self) == hash(other)
-        else:
-            return NotImplemented
-
-    def __lt__(self, other):
-        if isinstance(other, str):
-            return self.value < other
-        elif isinstance(other, StringKey):
-            return self.value < other.value
-        else:
-            return NotImplemented
-
-    def __rich_repr__(self):
-        yield "value", self.value
-
-
-class RowKey(StringKey):
-    """Uniquely identifies a row in the DataTable.
-
-    Even if the visual location
-    of the row changes due to sorting or other modifications, a key will always
-    refer to the same row."""
-
-
-class ColumnKey(StringKey):
-    """Uniquely identifies a column in the DataTable.
-
-    Even if the visual location
-    of the column changes due to sorting or other modifications, a key will always
-    refer to the same column."""
-
-
-class CellKey(NamedTuple):
-    """A unique identifier for a cell in the DataTable.
-
-    Even if the cell changes
-    visual location (i.e. moves to a different coordinate in the table), this key
-    can still be used to retrieve it, regardless of where it currently is."""
-
-    row_key: RowKey
-    column_key: ColumnKey
-
-    def __rich_repr__(self):
-        yield "row_key", self.row_key
-        yield "column_key", self.column_key
 
 
 def default_cell_formatter(obj: object) -> RenderableType:
@@ -187,7 +111,6 @@ def default_cell_formatter(obj: object) -> RenderableType:
 class Column:
     """Metadata for a column in the DataTable."""
 
-    key: ColumnKey
     label: Text
     width: int = 0
     content_width: int = 0
@@ -198,19 +121,9 @@ class Column:
         """Width in cells, required to render a column."""
         # +2 is to account for space padding either side of the cell
         if self.auto_width:
-            return self.content_width + CELL_X_PADDING
+            return max(len(self.label), self.content_width) + CELL_X_PADDING
         else:
             return self.width + CELL_X_PADDING
-
-
-@dataclass
-class Row:
-    """Metadata for a row in the DataTable."""
-
-    key: RowKey
-    height: int
-    label: Text | None = None
-    auto_height: bool = False
 
 
 class RowRenderables(NamedTuple):
@@ -220,7 +133,7 @@ class RowRenderables(NamedTuple):
     cells: list[RenderableType]
 
 
-class DataTable(ScrollView, Generic[CellType], can_focus=True):
+class DataTable(ScrollView, can_focus=True):
     """A tabular widget that contains data."""
 
     BINDINGS: ClassVar[list[BindingType]] = [
@@ -361,7 +274,6 @@ class DataTable(ScrollView, Generic[CellType], can_focus=True):
             data_table: DataTable,
             value: CellType,
             coordinate: Coordinate,
-            cell_key: CellKey,
         ) -> None:
             self.data_table = data_table
             """The data table."""
@@ -369,14 +281,11 @@ class DataTable(ScrollView, Generic[CellType], can_focus=True):
             """The value in the highlighted cell."""
             self.coordinate: Coordinate = coordinate
             """The coordinate of the highlighted cell."""
-            self.cell_key: CellKey = cell_key
-            """The key for the highlighted cell."""
             super().__init__()
 
         def __rich_repr__(self) -> rich.repr.Result:
             yield "value", self.value
             yield "coordinate", self.coordinate
-            yield "cell_key", self.cell_key
 
         @property
         def control(self) -> DataTable:
@@ -396,7 +305,6 @@ class DataTable(ScrollView, Generic[CellType], can_focus=True):
             data_table: DataTable,
             value: CellType,
             coordinate: Coordinate,
-            cell_key: CellKey,
         ) -> None:
             self.data_table = data_table
             """The data table."""
@@ -404,14 +312,11 @@ class DataTable(ScrollView, Generic[CellType], can_focus=True):
             """The value in the cell that was selected."""
             self.coordinate: Coordinate = coordinate
             """The coordinate of the cell that was selected."""
-            self.cell_key: CellKey = cell_key
-            """The key for the selected cell."""
             super().__init__()
 
         def __rich_repr__(self) -> rich.repr.Result:
             yield "value", self.value
             yield "coordinate", self.coordinate
-            yield "cell_key", self.cell_key
 
         @property
         def control(self) -> DataTable:
@@ -427,20 +332,15 @@ class DataTable(ScrollView, Generic[CellType], can_focus=True):
         widget in the DOM.
         """
 
-        def __init__(
-            self, data_table: DataTable, cursor_row: int, row_key: RowKey
-        ) -> None:
+        def __init__(self, data_table: DataTable, cursor_row: int) -> None:
             self.data_table = data_table
             """The data table."""
             self.cursor_row: int = cursor_row
             """The y-coordinate of the cursor that highlighted the row."""
-            self.row_key: RowKey = row_key
-            """The key of the row that was highlighted."""
             super().__init__()
 
         def __rich_repr__(self) -> rich.repr.Result:
             yield "cursor_row", self.cursor_row
-            yield "row_key", self.row_key
 
         @property
         def control(self) -> DataTable:
@@ -456,20 +356,15 @@ class DataTable(ScrollView, Generic[CellType], can_focus=True):
         widget in the DOM.
         """
 
-        def __init__(
-            self, data_table: DataTable, cursor_row: int, row_key: RowKey
-        ) -> None:
+        def __init__(self, data_table: DataTable, cursor_row: int) -> None:
             self.data_table = data_table
             """The data table."""
             self.cursor_row: int = cursor_row
             """The y-coordinate of the cursor that made the selection."""
-            self.row_key: RowKey = row_key
-            """The key of the row that was selected."""
             super().__init__()
 
         def __rich_repr__(self) -> rich.repr.Result:
             yield "cursor_row", self.cursor_row
-            yield "row_key", self.row_key
 
         @property
         def control(self) -> DataTable:
@@ -485,20 +380,15 @@ class DataTable(ScrollView, Generic[CellType], can_focus=True):
         widget in the DOM.
         """
 
-        def __init__(
-            self, data_table: DataTable, cursor_column: int, column_key: ColumnKey
-        ) -> None:
+        def __init__(self, data_table: DataTable, cursor_column: int) -> None:
             self.data_table = data_table
             """The data table."""
             self.cursor_column: int = cursor_column
             """The x-coordinate of the column that was highlighted."""
-            self.column_key = column_key
-            """The key of the column that was highlighted."""
             super().__init__()
 
         def __rich_repr__(self) -> rich.repr.Result:
             yield "cursor_column", self.cursor_column
-            yield "column_key", self.column_key
 
         @property
         def control(self) -> DataTable:
@@ -514,20 +404,15 @@ class DataTable(ScrollView, Generic[CellType], can_focus=True):
         widget in the DOM.
         """
 
-        def __init__(
-            self, data_table: DataTable, cursor_column: int, column_key: ColumnKey
-        ) -> None:
+        def __init__(self, data_table: DataTable, cursor_column: int) -> None:
             self.data_table = data_table
             """The data table."""
             self.cursor_column: int = cursor_column
             """The x-coordinate of the column that was selected."""
-            self.column_key = column_key
-            """The key of the column that was selected."""
             super().__init__()
 
         def __rich_repr__(self) -> rich.repr.Result:
             yield "cursor_column", self.cursor_column
-            yield "column_key", self.column_key
 
         @property
         def control(self) -> DataTable:
@@ -540,14 +425,11 @@ class DataTable(ScrollView, Generic[CellType], can_focus=True):
         def __init__(
             self,
             data_table: DataTable,
-            column_key: ColumnKey,
             column_index: int,
             label: Text,
         ):
             self.data_table = data_table
             """The data table."""
-            self.column_key = column_key
-            """The key for the column."""
             self.column_index = column_index
             """The index for the column."""
             self.label = label
@@ -555,7 +437,6 @@ class DataTable(ScrollView, Generic[CellType], can_focus=True):
             super().__init__()
 
         def __rich_repr__(self) -> rich.repr.Result:
-            yield "column_key", self.column_key
             yield "column_index", self.column_index
             yield "label", self.label.plain
 
@@ -570,14 +451,11 @@ class DataTable(ScrollView, Generic[CellType], can_focus=True):
         def __init__(
             self,
             data_table: DataTable,
-            row_key: RowKey,
             row_index: int,
             label: Text,
         ):
             self.data_table = data_table
             """The data table."""
-            self.row_key = row_key
-            """The key for the column."""
             self.row_index = row_index
             """The index for the column."""
             self.label = label
@@ -585,7 +463,6 @@ class DataTable(ScrollView, Generic[CellType], can_focus=True):
             super().__init__()
 
         def __rich_repr__(self) -> rich.repr.Result:
-            yield "row_key", self.row_key
             yield "row_index", self.row_index
             yield "label", self.label.plain
 
@@ -596,6 +473,7 @@ class DataTable(ScrollView, Generic[CellType], can_focus=True):
 
     def __init__(
         self,
+        backend: DataTableBackend,
         *,
         show_header: bool = True,
         show_row_labels: bool = True,
@@ -608,30 +486,13 @@ class DataTable(ScrollView, Generic[CellType], can_focus=True):
         cursor_background_priority: Literal["renderable", "css"] = "renderable",
         cursor_type: CursorType = "cell",
         name: str | None = None,
-        id: str | None = None,
+        id: str | None = None,  # noqa: A002
         classes: str | None = None,
         disabled: bool = False,
     ) -> None:
         super().__init__(name=name, id=id, classes=classes, disabled=disabled)
-        self._data: dict[RowKey, dict[ColumnKey, CellType]] = {}
-        """Contains the cells of the table, indexed by row key and column key.
-        The final positioning of a cell on screen cannot be determined solely by this
-        structure. Instead, we must check _row_locations and _column_locations to find
-        where each cell currently resides in space."""
-
-        self.columns: dict[ColumnKey, Column] = {}
-        """Metadata about the columns of the table, indexed by their key."""
-        self.rows: dict[RowKey, Row] = {}
-        """Metadata about the rows of the table, indexed by their key."""
-
-        # Keep tracking of key -> index for rows/cols. These allow us to retrieve,
-        # given a row or column key, the index that row or column is currently
-        # present at, and mean that rows and columns are location independent - they
-        # can move around without requiring us to modify the underlying data.
-        self._row_locations: TwoWayDict[RowKey, int] = TwoWayDict({})
-        """Maps row keys to row indices which represent row order."""
-        self._column_locations: TwoWayDict[ColumnKey, int] = TwoWayDict({})
-        """Maps column keys to column indices which represent column order."""
+        self.backend: DataTableBackend = backend
+        self._ordered_columns: None | list[Column] = None
 
         self._row_render_cache: LRUCache[
             RowCacheKey, tuple[SegmentLines, SegmentLines]
@@ -643,10 +504,10 @@ class DataTable(ScrollView, Generic[CellType], can_focus=True):
         """Cache for individual cells."""
         self._line_cache: LRUCache[LineCacheKey, Strip] = LRUCache(1000)
         """Cache for lines within rows."""
-        self._offset_cache: LRUCache[int, list[tuple[RowKey, int]]] = LRUCache(1)
+        # self._offset_cache: LRUCache[int, list[tuple[RowKey, int]]] = LRUCache(1)
         """Cached y_offset - key is update_count - see y_offsets property for more
         information """
-        self._ordered_row_cache: LRUCache[tuple[int, int], list[Row]] = LRUCache(1)
+        # self._ordered_row_cache: LRUCache[tuple[int, int], list[Row]] = LRUCache(1)
         """Caches row ordering - key is (num_rows, update_count)."""
 
         self._pseudo_class_state = PseudoClasses(False, False, False)
@@ -654,24 +515,25 @@ class DataTable(ScrollView, Generic[CellType], can_focus=True):
         when we lose focus on the DataTable, rules which apply to :focus are invalidated
         and we prevent lingering styles."""
 
-        self._require_update_dimensions: bool = False
+        self._require_update_dimensions: bool = True
         """Set to re-calculate dimensions on idle."""
-        self._new_rows: set[RowKey] = set()
+        # TODO: support mutable data
+        # self._new_rows: set[RowKey] = set()
         """Tracking newly added rows to be used in calculation of dimensions on idle."""
-        self._updated_cells: set[CellKey] = set()
+        # self._updated_cells: set[CellKey] = set()
         """Track which cells were updated, so that we can refresh them once on idle."""
 
         self._show_hover_cursor = False
         """Used to hide the mouse hover cursor when the user uses the keyboard."""
         self._update_count = 0
         """Number of update (INCLUDING SORT) operations so far. Used for cache invalidation."""
-        self._header_row_key = RowKey()
+        self._header_row_index = -1
         """The header is a special row - not part of the data. Retrieve via this key."""
-        self._label_column_key = ColumnKey()
+        self._label_column_index = -1
         """The column containing row labels is not part of the data. This key identifies it."""
         self._labelled_row_exists = False
         """Whether or not the user has supplied any rows with labels."""
-        self._label_column = Column(self._label_column_key, Text(), auto_width=True)
+        self._label_column = Column(Text(), auto_width=True)
         """The largest content width out of all row labels in the table."""
 
         self.show_header = show_header
@@ -720,14 +582,15 @@ class DataTable(ScrollView, Generic[CellType], can_focus=True):
     @property
     def row_count(self) -> int:
         """The number of rows currently present in the DataTable."""
-        return len(self.rows)
+        return self.backend.row_count
 
-    @property
-    def _y_offsets(self) -> list[tuple[RowKey, int]]:
-        """Contains a 2-tuple for each line (not row!) of the DataTable. Given a
-        y-coordinate, we can index into this list to find which row that y-coordinate
-        lands on, and the y-offset *within* that row. The length of the returned list
-        is therefore the total height of all rows within the DataTable."""
+        # @property
+        # def _y_offsets(self) -> list[tuple[RowKey, int]]:
+        #     """Contains a 2-tuple for each line (not row!) of the DataTable. Given a
+        #     y-coordinate, we can index into this list to find which row that y-coordinate
+        #     lands on, and the y-offset *within* that row. The length of the returned list
+        #     is therefore the total height of all rows within the DataTable."""
+        #     raise NotImplementedError("todo: support rows with height > 1")
         y_offsets = []
         if self._update_count in self._offset_cache:
             y_offsets = self._offset_cache[self._update_count]
@@ -739,13 +602,16 @@ class DataTable(ScrollView, Generic[CellType], can_focus=True):
 
     @property
     def _total_row_height(self) -> int:
-        """The total height of all rows within the DataTable"""
-        return len(self._y_offsets)
+        """
+        The total height of all rows within the DataTable, NOT including the header.
+        """
+        # TODO: support rows with height > 1
+        return self.backend.row_count
 
     def update_cell(
         self,
-        row_key: RowKey | str,
-        column_key: ColumnKey | str,
+        row_index: int,
+        column_index: int,
         value: CellType,
         *,
         update_width: bool = False,
@@ -763,25 +629,22 @@ class DataTable(ScrollView, Generic[CellType], can_focus=True):
             CellDoesNotExist: When the supplied `row_key` and `column_key`
                 cannot be found in the table.
         """
-        if isinstance(row_key, str):
-            row_key = RowKey(row_key)
-        if isinstance(column_key, str):
-            column_key = ColumnKey(column_key)
+        raise NotImplementedError("No updates allowed.")
 
-        try:
-            self._data[row_key][column_key] = value
-        except KeyError:
-            raise CellDoesNotExist(
-                f"No cell exists for row_key={row_key!r}, column_key={column_key!r}."
-            ) from None
-        self._update_count += 1
+        # try:
+        #     self._data[row_key][column_key] = value
+        # except KeyError:
+        #     raise CellDoesNotExist(
+        #         f"No cell exists for row_key={row_key!r}, column_key={column_key!r}."
+        #     ) from None
+        # self._update_count += 1
 
-        # Recalculate widths if necessary
-        if update_width:
-            self._updated_cells.add(CellKey(row_key, column_key))
-            self._require_update_dimensions = True
+        # # Recalculate widths if necessary
+        # if update_width:
+        #     self._updated_cells.add(CellKey(row_key, column_key))
+        #     self._require_update_dimensions = True
 
-        self.refresh()
+        # self.refresh()
 
     def update_cell_at(
         self, coordinate: Coordinate, value: CellType, *, update_width: bool = False
@@ -794,29 +657,12 @@ class DataTable(ScrollView, Generic[CellType], can_focus=True):
             update_width: Whether to resize the column width to accommodate
                 for the new cell content.
         """
+        raise NotImplementedError("No updates allowed.")
         if not self.is_valid_coordinate(coordinate):
             raise CellDoesNotExist(f"Coordinate {coordinate!r} is invalid.")
 
         row_key, column_key = self.coordinate_to_cell_key(coordinate)
         self.update_cell(row_key, column_key, value, update_width=update_width)
-
-    def get_cell(self, row_key: RowKey | str, column_key: ColumnKey | str) -> CellType:
-        """Given a row key and column key, return the value of the corresponding cell.
-
-        Args:
-            row_key: The row key of the cell.
-            column_key: The column key of the cell.
-
-        Returns:
-            The value of the cell identified by the row and column keys.
-        """
-        try:
-            cell_value = self._data[row_key][column_key]
-        except KeyError:
-            raise CellDoesNotExist(
-                f"No cell exists for row_key={row_key!r}, column_key={column_key!r}."
-            )
-        return cell_value
 
     def get_cell_at(self, coordinate: Coordinate) -> CellType:
         """Get the value from the cell occupying the given coordinate.
@@ -830,54 +676,31 @@ class DataTable(ScrollView, Generic[CellType], can_focus=True):
         Raises:
             CellDoesNotExist: If there is no cell with the given coordinate.
         """
-        row_key, column_key = self.coordinate_to_cell_key(coordinate)
-        return self.get_cell(row_key, column_key)
+        try:
+            return self.backend.get_cell_at(coordinate.row, coordinate.column)
+        except IndexError as e:
+            raise CellDoesNotExist(f"No cell exists at coordinate {coordinate}.") from e
 
-    def get_cell_coordinate(
-        self, row_key: RowKey | str, column_key: Column | str
-    ) -> Coordinate:
-        """Given a row key and column key, return the corresponding cell coordinate.
+    # def get_row(self, row_key: RowKey | str) -> list[CellType]:
+    #     """Get the values from the row identified by the given row key.
 
-        Args:
-            row_key: The row key of the cell.
-            column_key: The column key of the cell.
+    #     Args:
+    #         row_key: The key of the row.
 
-        Returns:
-            The current coordinate of the cell identified by the row and column keys.
+    #     Returns:
+    #         A list of the values contained within the row.
 
-        Raises:
-            CellDoesNotExist: If the specified cell does not exist.
-        """
-        if (
-            row_key not in self._row_locations
-            or column_key not in self._column_locations
-        ):
-            raise CellDoesNotExist(
-                f"No cell exists for row_key={row_key!r}, column_key={column_key!r}."
-            )
-        row_index = self._row_locations.get(row_key)
-        column_index = self._column_locations.get(column_key)
-        return Coordinate(row_index, column_index)
-
-    def get_row(self, row_key: RowKey | str) -> list[CellType]:
-        """Get the values from the row identified by the given row key.
-
-        Args:
-            row_key: The key of the row.
-
-        Returns:
-            A list of the values contained within the row.
-
-        Raises:
-            RowDoesNotExist: When there is no row corresponding to the key.
-        """
-        if row_key not in self._row_locations:
-            raise RowDoesNotExist(f"Row key {row_key!r} is not valid.")
-        cell_mapping: dict[ColumnKey, CellType] = self._data.get(row_key, {})
-        ordered_row: list[CellType] = [
-            cell_mapping[column.key] for column in self.ordered_columns
-        ]
-        return ordered_row
+    #     Raises:
+    #         RowDoesNotExist: When there is no row corresponding to the key.
+    #     """
+    #     raise NotImplementedError("Use get_row_at instead.")
+    #     if row_key not in self._row_locations:
+    #         raise RowDoesNotExist(f"Row key {row_key!r} is not valid.")
+    #     cell_mapping: dict[ColumnKey, CellType] = self._data.get(row_key, {})
+    #     ordered_row: list[CellType] = [
+    #         cell_mapping[column.key] for column in self.ordered_columns
+    #     ]
+    #     return ordered_row
 
     def get_row_at(self, row_index: int) -> list[CellType]:
         """Get the values from the cells in a row at a given index. This will
@@ -895,44 +718,28 @@ class DataTable(ScrollView, Generic[CellType], can_focus=True):
         """
         if not self.is_valid_row_index(row_index):
             raise RowDoesNotExist(f"Row index {row_index!r} is not valid.")
-        row_key = self._row_locations.get_key(row_index)
-        return self.get_row(row_key)
+        return list(self.backend.get_row_at(row_index))
 
-    def get_row_index(self, row_key: RowKey | str) -> int:
-        """Return the current index for the row identified by row_key.
+    # def get_column(self, column_key: ColumnKey | str) -> Iterable[CellType]:
+    #     """Get the values from the column identified by the given column key.
 
-        Args:
-            row_key: The row key to find the current index of.
+    #     Args:
+    #         column_key: The key of the column.
 
-        Returns:
-            The current index of the specified row key.
+    #     Returns:
+    #         A generator which yields the cells in the column.
 
-        Raises:
-            RowDoesNotExist: If the row key does not exist.
-        """
-        if row_key not in self._row_locations:
-            raise RowDoesNotExist(f"No row exists for row_key={row_key!r}")
-        return self._row_locations.get(row_key)
+    #     Raises:
+    #         ColumnDoesNotExist: If there is no column corresponding to the key.
+    #     """
+    #     raise NotImplementedError("Use get_column_at instead.")
+    #     if column_key not in self._column_locations:
+    #         raise ColumnDoesNotExist(f"Column key {column_key!r} is not valid.")
 
-    def get_column(self, column_key: ColumnKey | str) -> Iterable[CellType]:
-        """Get the values from the column identified by the given column key.
-
-        Args:
-            column_key: The key of the column.
-
-        Returns:
-            A generator which yields the cells in the column.
-
-        Raises:
-            ColumnDoesNotExist: If there is no column corresponding to the key.
-        """
-        if column_key not in self._column_locations:
-            raise ColumnDoesNotExist(f"Column key {column_key!r} is not valid.")
-
-        data = self._data
-        for row_metadata in self.ordered_rows:
-            row_key = row_metadata.key
-            yield data[row_key][column_key]
+    #     data = self._data
+    #     for row_metadata in self.ordered_rows:
+    #         row_key = row_metadata.key
+    #         yield data[row_key][column_key]
 
     def get_column_at(self, column_index: int) -> Iterable[CellType]:
         """Get the values from the column at a given index.
@@ -949,35 +756,18 @@ class DataTable(ScrollView, Generic[CellType], can_focus=True):
         if not self.is_valid_column_index(column_index):
             raise ColumnDoesNotExist(f"Column index {column_index!r} is not valid.")
 
-        column_key = self._column_locations.get_key(column_index)
-        yield from self.get_column(column_key)
-
-    def get_column_index(self, column_key: ColumnKey | str) -> int:
-        """Return the current index for the column identified by column_key.
-
-        Args:
-            column_key: The column key to find the current index of.
-
-        Returns:
-            The current index of the specified column key.
-
-        Raises:
-            ColumnDoesNotExist: If the column key does not exist.
-        """
-        if column_key not in self._column_locations:
-            raise ColumnDoesNotExist(f"No column exists for column_key={column_key!r}")
-        return self._column_locations.get(column_key)
+        yield from self.backend.get_column_at(column_index)
 
     def _clear_caches(self) -> None:
         self._row_render_cache.clear()
         self._cell_render_cache.clear()
         self._line_cache.clear()
         self._styles_cache.clear()
-        self._offset_cache.clear()
-        self._ordered_row_cache.clear()
+        # self._offset_cache.clear()
+        # self._ordered_row_cache.clear()
         self._get_styles_to_render_cell.cache_clear()
 
-    def get_row_height(self, row_key: RowKey) -> int:
+    def get_row_height(self, row_index: int) -> int:
         """Given a row key, return the height of that row in terminal cells.
 
         Args:
@@ -986,9 +776,11 @@ class DataTable(ScrollView, Generic[CellType], can_focus=True):
         Returns:
             The height of the row, measured in terminal character cells.
         """
-        if row_key is self._header_row_key:
-            return self.header_height
-        return self.rows[row_key].height
+        return 1
+        # TODO: support variable height rows.
+        # if row_key is self._header_row_key:
+        #     return self.header_height
+        # return self.rows[row_key].height
 
     def notify_style_update(self) -> None:
         self._clear_caches()
@@ -1099,48 +891,21 @@ class DataTable(ScrollView, Generic[CellType], can_focus=True):
             # In that case, there's nothing for us to do here.
             return
         else:
-            cell_key = self.coordinate_to_cell_key(coordinate)
             self.post_message(
-                DataTable.CellHighlighted(
-                    self, cell_value, coordinate=coordinate, cell_key=cell_key
-                )
+                DataTable.CellHighlighted(self, cell_value, coordinate=coordinate)
             )
-
-    def coordinate_to_cell_key(self, coordinate: Coordinate) -> CellKey:
-        """Return the key for the cell currently occupying this coordinate.
-
-        Args:
-            coordinate: The coordinate to exam the current cell key of.
-
-        Returns:
-            The key of the cell currently occupying this coordinate.
-
-        Raises:
-            CellDoesNotExist: If the coordinate is not valid.
-        """
-        if not self.is_valid_coordinate(coordinate):
-            raise CellDoesNotExist(f"No cell exists at {coordinate!r}.")
-        row_index, column_index = coordinate
-        row_key = self._row_locations.get_key(row_index)
-        column_key = self._column_locations.get_key(column_index)
-        return CellKey(row_key, column_key)
 
     def _highlight_row(self, row_index: int) -> None:
         """Apply highlighting to the row at the given index, and post event."""
         self.refresh_row(row_index)
-        is_valid_row = row_index < len(self._data)
-        if is_valid_row:
-            row_key = self._row_locations.get_key(row_index)
-            self.post_message(DataTable.RowHighlighted(self, row_index, row_key))
+        if self.is_valid_row_index(row_index):
+            self.post_message(DataTable.RowHighlighted(self, row_index))
 
     def _highlight_column(self, column_index: int) -> None:
         """Apply highlighting to the column at the given index, and post event."""
         self.refresh_column(column_index)
-        if column_index < len(self.columns):
-            column_key = self._column_locations.get_key(column_index)
-            self.post_message(
-                DataTable.ColumnHighlighted(self, column_index, column_key)
-            )
+        if self.is_valid_column_index(column_index):
+            self.post_message(DataTable.ColumnHighlighted(self, column_index))
 
     def validate_cursor_coordinate(self, value: Coordinate) -> Coordinate:
         return self._clamp_cursor_coordinate(value)
@@ -1148,8 +913,8 @@ class DataTable(ScrollView, Generic[CellType], can_focus=True):
     def _clamp_cursor_coordinate(self, coordinate: Coordinate) -> Coordinate:
         """Clamp a coordinate such that it falls within the boundaries of the table."""
         row, column = coordinate
-        row = clamp(row, 0, self.row_count - 1)
-        column = clamp(column, 0, len(self.columns) - 1)
+        row = clamp(row, 0, self.backend.row_count - 1)
+        column = clamp(column, 0, self.backend.column_count - 1)
         return Coordinate(row, column)
 
     def watch_cursor_type(self, old: str, new: str) -> None:
@@ -1189,8 +954,9 @@ class DataTable(ScrollView, Generic[CellType], can_focus=True):
         """The render width of the column containing row labels"""
         return self._label_column.render_width if self._should_render_row_labels else 0
 
-    def _update_column_widths(self, updated_cells: set[CellKey]) -> None:
+    def _update_column_widths(self, updated_cells: set[Any]) -> None:
         """Update the widths of the columns based on the newly updated cell widths."""
+        raise NotImplementedError("No updates allowed.")
         for row_key, column_key in updated_cells:
             column = self.columns.get(column_key)
             if column is None:
@@ -1214,7 +980,7 @@ class DataTable(ScrollView, Generic[CellType], can_focus=True):
 
         self._require_update_dimensions = True
 
-    def _update_dimensions(self, new_rows: Iterable[RowKey]) -> None:
+    def _update_dimensions(self, new_rows: Iterable[int]) -> None:
         """Called to recalculate the virtual (scrollable) size.
 
         This recomputes column widths and then checks if any of the new rows need
@@ -1224,20 +990,19 @@ class DataTable(ScrollView, Generic[CellType], can_focus=True):
             new_rows: The new rows that will affect the `DataTable` dimensions.
         """
         console = self.app.console
-        auto_height_rows: list[tuple[int, Row, list[RenderableType]]] = []
-        for row_key in new_rows:
-            row_index = self._row_locations.get(row_key)
-
+        auto_height_rows: list[tuple[int, int, list[RenderableType]]] = []
+        for row_index in new_rows:
             # The row could have been removed before on_idle was called, so we
             # need to be quite defensive here and don't assume that the row exists.
-            if row_index is None:
+            if not self.is_valid_row_index(row_index):
                 continue
 
-            row = self.rows.get(row_key)
-            assert row is not None
+            # TODO: support row labels
+            # row = self.rows.get(row_key)
+            # assert row is not None
 
-            if row.label is not None:
-                self._labelled_row_exists = True
+            # if row.label is not None:
+            #     self._labelled_row_exists = True
 
             row_label, cells_in_row = self._get_row_renderables(row_index)
             label_content_width = measure(console, row_label, 1) if row_label else 0
@@ -1249,12 +1014,14 @@ class DataTable(ScrollView, Generic[CellType], can_focus=True):
                 content_width = measure(console, renderable, 1)
                 column.content_width = max(column.content_width, content_width)
 
-            if row.auto_height:
-                auto_height_rows.append((row_index, row, cells_in_row))
+            # TODO: support row HEIGHT > 1
+            # if row.auto_height:
+            #     auto_height_rows.append((row_index, row, cells_in_row))
 
         # If there are rows that need to have their height computed, render them correctly
         # so that we can cache this rendering for later.
         if auto_height_rows:
+            raise NotImplementedError("todo: support auto-height rows.")
             render_cell = self._render_cell  # This method renders & caches.
             should_highlight = self._should_highlight
             cursor_type = self.cursor_type
@@ -1309,7 +1076,7 @@ class DataTable(ScrollView, Generic[CellType], can_focus=True):
                             ]
                         )
 
-        data_cells_width = sum(column.render_width for column in self.columns.values())
+        data_cells_width = sum(column.render_width for column in self.ordered_columns)
         total_width = data_cells_width + self._row_label_column_width
         header_height = self.header_height if self.show_header else 0
         self.virtual_size = Size(
@@ -1323,19 +1090,19 @@ class DataTable(ScrollView, Generic[CellType], can_focus=True):
             return Region(0, 0, 0, 0)
 
         row_index, column_index = coordinate
-        row_key = self._row_locations.get_key(row_index)
-        row = self.rows[row_key]
 
         # The x-coordinate of a cell is the sum of widths of the data cells to the left
         # plus the width of the render width of the longest row label.
         x = (
             sum(column.render_width for column in self.ordered_columns[:column_index])
-            + self._row_label_column_width
+            # TODO: support row labels
+            # + self._row_label_column_width
         )
-        column_key = self._column_locations.get_key(column_index)
-        width = self.columns[column_key].render_width
-        height = row.height
-        y = sum(ordered_row.height for ordered_row in self.ordered_rows[:row_index])
+        width = self.ordered_columns[column_index].render_width
+        height = 1  # row.height
+        # TODO: support multiple heights
+        # y = sum(ordered_row.height for ordered_row in self.ordered_rows[:row_index])
+        y = row_index
         if self.show_header:
             y += self.header_height
         cell_region = Region(x, y, width, height)
@@ -1346,17 +1113,17 @@ class DataTable(ScrollView, Generic[CellType], can_focus=True):
         if not self.is_valid_row_index(row_index):
             return Region(0, 0, 0, 0)
 
-        rows = self.rows
-        row_key = self._row_locations.get_key(row_index)
-        row = rows[row_key]
         row_width = (
-            sum(column.render_width for column in self.columns.values())
-            + self._row_label_column_width
+            sum(column.render_width for column in self.ordered_columns)
+            # TODO: support row labels
+            # + self._row_label_column_width
         )
-        y = sum(ordered_row.height for ordered_row in self.ordered_rows[:row_index])
+        # TODO: support multiple heights
+        # y = sum(ordered_row.height for ordered_row in self.ordered_rows[:row_index])
+        y = row_index
         if self.show_header:
             y += self.header_height
-        row_region = Region(0, y, row_width, row.height)
+        row_region = Region(0, y, row_width, 1)  # row.height)
         return row_region
 
     def _get_column_region(self, column_index: int) -> Region:
@@ -1364,13 +1131,11 @@ class DataTable(ScrollView, Generic[CellType], can_focus=True):
         if not self.is_valid_column_index(column_index):
             return Region(0, 0, 0, 0)
 
-        columns = self.columns
         x = (
             sum(column.render_width for column in self.ordered_columns[:column_index])
             + self._row_label_column_width
         )
-        column_key = self._column_locations.get_key(column_index)
-        width = columns[column_key].render_width
+        width = self.ordered_columns[column_index].render_width
         header_height = self.header_height if self.show_header else 0
         height = self._total_row_height + header_height
         full_column_region = Region(x, 0, width, height)
@@ -1385,6 +1150,8 @@ class DataTable(ScrollView, Generic[CellType], can_focus=True):
         Returns:
             The `DataTable` instance.
         """
+        # TODO: make Backend optional and reactive?
+        raise NotImplementedError("Unmount this table and mount a new one instead.")
         self._clear_caches()
         self._y_offsets.clear()
         self._data.clear()
@@ -1405,231 +1172,238 @@ class DataTable(ScrollView, Generic[CellType], can_focus=True):
         self.scroll_target_y = 0
         return self
 
-    def add_column(
-        self,
-        label: TextType,
-        *,
-        width: int | None = None,
-        key: str | None = None,
-        default: CellType | None = None,
-    ) -> ColumnKey:
-        """Add a column to the table.
+    # def add_column(
+    #     self,
+    #     label: TextType,
+    #     *,
+    #     width: int | None = None,
+    #     key: str | None = None,
+    #     default: CellType | None = None,
+    # ) -> int:
+    #     """Add a column to the table.
 
-        Args:
-            label: A str or Text object containing the label (shown top of column).
-            width: Width of the column in cells or None to fit content.
-            key: A key which uniquely identifies this column.
-                If None, it will be generated for you.
-            default: The  value to insert into pre-existing rows.
+    #     Args:
+    #         label: A str or Text object containing the label (shown top of column).
+    #         width: Width of the column in cells or None to fit content.
+    #         key: A key which uniquely identifies this column.
+    #             If None, it will be generated for you.
+    #         default: The  value to insert into pre-existing rows.
 
-        Returns:
-            Uniquely identifies this column. Can be used to retrieve this column
-                regardless of its current location in the DataTable (it could have moved
-                after being added due to sorting/insertion/deletion of other columns).
-        """
-        column_key = ColumnKey(key)
-        if column_key in self._column_locations:
-            raise DuplicateKey(f"The column key {key!r} already exists.")
-        column_index = len(self.columns)
-        label = Text.from_markup(label) if isinstance(label, str) else label
-        content_width = measure(self.app.console, label, 1)
-        if width is None:
-            column = Column(
-                column_key,
-                label,
-                content_width,
-                content_width=content_width,
-                auto_width=True,
-            )
-        else:
-            column = Column(
-                column_key,
-                label,
-                width,
-                content_width=content_width,
-            )
+    #     Returns:
+    #         Uniquely identifies this column. Can be used to retrieve this column
+    #             regardless of its current location in the DataTable (it could have moved
+    #             after being added due to sorting/insertion/deletion of other columns).
+    #     """
+    #     # TODO: append column to pyarrow table.
+    #     raise NotImplementedError("No updates allowed right now.")
+    #     column_key = ColumnKey(key)
+    #     if column_key in self._column_locations:
+    #         raise DuplicateKey(f"The column key {key!r} already exists.")
+    #     column_index = len(self.columns)
+    #     label = Text.from_markup(label) if isinstance(label, str) else label
+    #     content_width = measure(self.app.console, label, 1)
+    #     if width is None:
+    #         column = Column(
+    #             column_key,
+    #             label,
+    #             content_width,
+    #             content_width=content_width,
+    #             auto_width=True,
+    #         )
+    #     else:
+    #         column = Column(
+    #             column_key,
+    #             label,
+    #             width,
+    #             content_width=content_width,
+    #         )
 
-        self.columns[column_key] = column
-        self._column_locations[column_key] = column_index
+    #     self.columns[column_key] = column
+    #     self._column_locations[column_key] = column_index
 
-        # Update pre-existing rows to account for the new column.
-        for row_key in self.rows.keys():
-            self._data[row_key][column_key] = default
-            self._updated_cells.add(CellKey(row_key, column_key))
+    #     # Update pre-existing rows to account for the new column.
+    #     for row_key in self.rows.keys():
+    #         self._data[row_key][column_key] = default
+    #         self._updated_cells.add(CellKey(row_key, column_key))
 
-        self._require_update_dimensions = True
-        self.check_idle()
+    #     self._require_update_dimensions = True
+    #     self.check_idle()
 
-        return column_key
+    #     return column_key
 
-    def add_row(
-        self,
-        *cells: CellType,
-        height: int | None = 1,
-        key: str | None = None,
-        label: TextType | None = None,
-    ) -> RowKey:
-        """Add a row at the bottom of the DataTable.
+    # def add_row(
+    #     self,
+    #     *cells: CellType,
+    #     height: int | None = 1,
+    #     key: str | None = None,
+    #     label: TextType | None = None,
+    # ) -> int:
+    #     """Add a row at the bottom of the DataTable.
 
-        Args:
-            *cells: Positional arguments should contain cell data.
-            height: The height of a row (in lines). Use `None` to auto-detect the optimal
-                height.
-            key: A key which uniquely identifies this row. If None, it will be generated
-                for you and returned.
-            label: The label for the row. Will be displayed to the left if supplied.
+    #     Args:
+    #         *cells: Positional arguments should contain cell data.
+    #         height: The height of a row (in lines). Use `None` to auto-detect the optimal
+    #             height.
+    #         key: A key which uniquely identifies this row. If None, it will be generated
+    #             for you and returned.
+    #         label: The label for the row. Will be displayed to the left if supplied.
 
-        Returns:
-            Unique identifier for this row. Can be used to retrieve this row regardless
-                of its current location in the DataTable (it could have moved after
-                being added due to sorting or insertion/deletion of other rows).
-        """
-        row_key = RowKey(key)
-        if row_key in self._row_locations:
-            raise DuplicateKey(f"The row key {row_key!r} already exists.")
+    #     Returns:
+    #         Unique identifier for this row. Can be used to retrieve this row regardless
+    #             of its current location in the DataTable (it could have moved after
+    #             being added due to sorting or insertion/deletion of other rows).
+    #     """
+    #     raise NotImplementedError("No updates allowed.")
+    #     row_key = RowKey(key)
+    #     if row_key in self._row_locations:
+    #         raise DuplicateKey(f"The row key {row_key!r} already exists.")
 
-        # TODO: If there are no columns: do we generate them here?
-        #  If we don't do this, users will be required to call add_column(s)
-        #  Before they call add_row.
+    #     # TODO: If there are no columns: do we generate them here?
+    #     #  If we don't do this, users will be required to call add_column(s)
+    #     #  Before they call add_row.
 
-        row_index = self.row_count
-        # Map the key of this row to its current index
-        self._row_locations[row_key] = row_index
-        self._data[row_key] = {
-            column.key: cell
-            for column, cell in zip_longest(self.ordered_columns, cells)
-        }
-        label = Text.from_markup(label) if isinstance(label, str) else label
-        # Rows with auto-height get a height of 0 because 1) we need an integer height
-        # to do some intermediate computations and 2) because 0 doesn't impact the data
-        # table while we don't figure out how tall this row is.
-        self.rows[row_key] = Row(
-            row_key,
-            height or 0,
-            label,
-            height is None,
-        )
-        self._new_rows.add(row_key)
-        self._require_update_dimensions = True
-        self.cursor_coordinate = self.cursor_coordinate
+    #     row_index = self.row_count
+    #     # Map the key of this row to its current index
+    #     self._row_locations[row_key] = row_index
+    #     self._data[row_key] = {
+    #         column.key: cell
+    #         for column, cell in zip_longest(self.ordered_columns, cells)
+    #     }
+    #     label = Text.from_markup(label) if isinstance(label, str) else label
+    #     # Rows with auto-height get a height of 0 because 1) we need an integer height
+    #     # to do some intermediate computations and 2) because 0 doesn't impact the data
+    #     # table while we don't figure out how tall this row is.
+    #     self.rows[row_key] = Row(
+    #         row_key,
+    #         height or 0,
+    #         label,
+    #         height is None,
+    #     )
+    #     self._new_rows.add(row_key)
+    #     self._require_update_dimensions = True
+    #     self.cursor_coordinate = self.cursor_coordinate
 
-        # If a position has opened for the cursor to appear, where it previously
-        # could not (e.g. when there's no data in the table), then a highlighted
-        # event is posted, since there's now a highlighted cell when there wasn't
-        # before.
-        cell_now_available = self.row_count == 1 and len(self.columns) > 0
-        visible_cursor = self.show_cursor and self.cursor_type != "none"
-        if cell_now_available and visible_cursor:
-            self._highlight_cursor()
+    #     # If a position has opened for the cursor to appear, where it previously
+    #     # could not (e.g. when there's no data in the table), then a highlighted
+    #     # event is posted, since there's now a highlighted cell when there wasn't
+    #     # before.
+    #     cell_now_available = self.row_count == 1 and len(self.columns) > 0
+    #     visible_cursor = self.show_cursor and self.cursor_type != "none"
+    #     if cell_now_available and visible_cursor:
+    #         self._highlight_cursor()
 
-        self._update_count += 1
-        self.check_idle()
-        return row_key
+    #     self._update_count += 1
+    #     self.check_idle()
+    #     return row_key
 
-    def add_columns(self, *labels: TextType) -> list[ColumnKey]:
-        """Add a number of columns.
+    # def add_columns(self, *labels: TextType) -> list[int]:
+    #     """Add a number of columns.
 
-        Args:
-            *labels: Column headers.
+    #     Args:
+    #         *labels: Column headers.
 
-        Returns:
-            A list of the keys for the columns that were added. See
-                the `add_column` method docstring for more information on how
-                these keys are used.
-        """
-        column_keys = []
-        for label in labels:
-            column_key = self.add_column(label, width=None)
-            column_keys.append(column_key)
-        return column_keys
+    #     Returns:
+    #         A list of the keys for the columns that were added. See
+    #             the `add_column` method docstring for more information on how
+    #             these keys are used.
+    #     """
+    #     raise NotImplementedError("todo: allow mutable data")
+    #     column_keys = []
+    #     for label in labels:
+    #         column_key = self.add_column(label, width=None)
+    #         column_keys.append(column_key)
+    #     return column_keys
 
-    def add_rows(self, rows: Iterable[Iterable[CellType]]) -> list[RowKey]:
-        """Add a number of rows at the bottom of the DataTable.
+    # def add_rows(self, rows: Iterable[Iterable[CellType]]) -> list[int]:
+    #     """Add a number of rows at the bottom of the DataTable.
 
-        Args:
-            rows: Iterable of rows. A row is an iterable of cells.
+    #     Args:
+    #         rows: Iterable of rows. A row is an iterable of cells.
 
-        Returns:
-            A list of the keys for the rows that were added. See
-                the `add_row` method docstring for more information on how
-                these keys are used.
-        """
-        row_keys = []
-        for row in rows:
-            row_key = self.add_row(*row)
-            row_keys.append(row_key)
-        return row_keys
+    #     Returns:
+    #         A list of the keys for the rows that were added. See
+    #             the `add_row` method docstring for more information on how
+    #             these keys are used.
+    #     """
+    #     raise NotImplementedError("todo: allow mutable data")
+    #     row_keys = []
+    #     for row in rows:
+    #         row_key = self.add_row(*row)
+    #         row_keys.append(row_key)
+    #     return row_keys
 
-    def remove_row(self, row_key: RowKey | str) -> None:
-        """Remove a row (identified by a key) from the DataTable.
+    # def remove_row(self, row_index: int) -> None:
+    #     """Remove a row (identified by a key) from the DataTable.
 
-        Args:
-            row_key: The key identifying the row to remove.
+    #     Args:
+    #         row_key: The key identifying the row to remove.
 
-        Raises:
-            RowDoesNotExist: If the row key does not exist.
-        """
-        if row_key not in self._row_locations:
-            raise RowDoesNotExist(f"Row key {row_key!r} is not valid.")
+    #     Raises:
+    #         RowDoesNotExist: If the row key does not exist.
+    #     """
+    #     raise NotImplementedError("No updates allowed.")
+    #     if row_key not in self._row_locations:
+    #         raise RowDoesNotExist(f"Row key {row_key!r} is not valid.")
 
-        self._require_update_dimensions = True
-        self.check_idle()
+    #     self._require_update_dimensions = True
+    #     self.check_idle()
 
-        index_to_delete = self._row_locations.get(row_key)
-        new_row_locations = TwoWayDict({})
-        for row_location_key in self._row_locations:
-            row_index = self._row_locations.get(row_location_key)
-            if row_index > index_to_delete:
-                new_row_locations[row_location_key] = row_index - 1
-            elif row_index < index_to_delete:
-                new_row_locations[row_location_key] = row_index
+    #     index_to_delete = self._row_locations.get(row_key)
+    #     new_row_locations = TwoWayDict({})
+    #     for row_location_key in self._row_locations:
+    #         row_index = self._row_locations.get(row_location_key)
+    #         if row_index > index_to_delete:
+    #             new_row_locations[row_location_key] = row_index - 1
+    #         elif row_index < index_to_delete:
+    #             new_row_locations[row_location_key] = row_index
 
-        self._row_locations = new_row_locations
+    #     self._row_locations = new_row_locations
 
-        del self.rows[row_key]
-        del self._data[row_key]
+    #     del self.rows[row_key]
+    #     del self._data[row_key]
 
-        self.cursor_coordinate = self.cursor_coordinate
-        self.hover_coordinate = self.hover_coordinate
+    #     self.cursor_coordinate = self.cursor_coordinate
+    #     self.hover_coordinate = self.hover_coordinate
 
-        self._update_count += 1
-        self.refresh(layout=True)
+    #     self._update_count += 1
+    #     self.refresh(layout=True)
 
-    def remove_column(self, column_key: ColumnKey | str) -> None:
-        """Remove a column (identified by a key) from the DataTable.
+    # def remove_column(self, column_index: int) -> None:
+    #     """Remove a column (identified by a key) from the DataTable.
 
-        Args:
-            column_key: The key identifying the column to remove.
+    #     Args:
+    #         column_key: The key identifying the column to remove.
 
-        Raises:
-            ColumnDoesNotExist: If the column key does not exist.
-        """
-        if column_key not in self._column_locations:
-            raise ColumnDoesNotExist(f"Column key {column_key!r} is not valid.")
+    #     Raises:
+    #         ColumnDoesNotExist: If the column key does not exist.
+    #     """
+    #     raise NotImplementedError("No updates allowed.")
+    #     if column_key not in self._column_locations:
+    #         raise ColumnDoesNotExist(f"Column key {column_key!r} is not valid.")
 
-        self._require_update_dimensions = True
-        self.check_idle()
+    #     self._require_update_dimensions = True
+    #     self.check_idle()
 
-        index_to_delete = self._column_locations.get(column_key)
-        new_column_locations = TwoWayDict({})
-        for column_location_key in self._column_locations:
-            column_index = self._column_locations.get(column_location_key)
-            if column_index > index_to_delete:
-                new_column_locations[column_location_key] = column_index - 1
-            elif column_index < index_to_delete:
-                new_column_locations[column_location_key] = column_index
+    #     index_to_delete = self._column_locations.get(column_key)
+    #     new_column_locations = TwoWayDict({})
+    #     for column_location_key in self._column_locations:
+    #         column_index = self._column_locations.get(column_location_key)
+    #         if column_index > index_to_delete:
+    #             new_column_locations[column_location_key] = column_index - 1
+    #         elif column_index < index_to_delete:
+    #             new_column_locations[column_location_key] = column_index
 
-        self._column_locations = new_column_locations
+    #     self._column_locations = new_column_locations
 
-        del self.columns[column_key]
-        for row in self._data:
-            del self._data[row][column_key]
+    #     del self.columns[column_key]
+    #     for row in self._data:
+    #         del self._data[row][column_key]
 
-        self.cursor_coordinate = self.cursor_coordinate
-        self.hover_coordinate = self.hover_coordinate
+    #     self.cursor_coordinate = self.cursor_coordinate
+    #     self.hover_coordinate = self.hover_coordinate
 
-        self._update_count += 1
-        self.refresh(layout=True)
+    #     self._update_count += 1
+    #     self.refresh(layout=True)
 
     async def _on_idle(self, _: events.Idle) -> None:
         """Runs when the message pump is empty.
@@ -1638,20 +1412,23 @@ class DataTable(ScrollView, Generic[CellType], can_focus=True):
         whole DataTable and re-computing column widths after some cells
         have been updated. This is more efficient in the case of high
         frequency updates, ensuring we only do expensive computations once."""
-        if self._updated_cells:
-            # Cell contents have already been updated at this point.
-            # Now we only need to worry about measuring column widths.
-            updated_columns = self._updated_cells.copy()
-            self._updated_cells.clear()
-            self._update_column_widths(updated_columns)
+        # TODO: allow updates
+        pass
+        # if self._updated_cells:
+        # Cell contents have already been updated at this point.
+        # Now we only need to worry about measuring column widths.
+        # updated_columns = self._updated_cells.copy()
+        # self._updated_cells.clear()
+        # self._update_column_widths(updated_columns)
 
         if self._require_update_dimensions:
             # Add the new rows *before* updating the column widths, since
             # cells in a new row may influence the final width of a column.
             # Only then can we compute optimal height of rows with "auto" height.
             self._require_update_dimensions = False
-            new_rows = self._new_rows.copy()
-            self._new_rows.clear()
+            # new_rows = self._new_rows.copy()
+            new_rows: list[int] = []
+            # self._new_rows.clear()
             self._update_dimensions(new_rows)
 
     def refresh_coordinate(self, coordinate: Coordinate) -> Self:
@@ -1724,7 +1501,7 @@ class DataTable(ScrollView, Generic[CellType], can_focus=True):
         Returns:
             True if the row index is within the bounds of the table.
         """
-        return 0 <= row_index < len(self.rows)
+        return 0 <= row_index < self.backend.row_count
 
     def is_valid_column_index(self, column_index: int) -> bool:
         """Return a boolean indicating whether the column_index is within table bounds.
@@ -1735,7 +1512,7 @@ class DataTable(ScrollView, Generic[CellType], can_focus=True):
         Returns:
             True if the column index is within the bounds of the table.
         """
-        return 0 <= column_index < len(self.columns)
+        return 0 <= column_index < self.backend.column_count
 
     def is_valid_coordinate(self, coordinate: Coordinate) -> bool:
         """Return a boolean indicating whether the given coordinate is valid.
@@ -1754,30 +1531,33 @@ class DataTable(ScrollView, Generic[CellType], can_focus=True):
     @property
     def ordered_columns(self) -> list[Column]:
         """The list of Columns in the DataTable, ordered as they appear on screen."""
-        column_indices = range(len(self.columns))
-        column_keys = [
-            self._column_locations.get_key(index) for index in column_indices
-        ]
-        ordered_columns = [self.columns[key] for key in column_keys]
-        return ordered_columns
+        if self._ordered_columns is None:
+            self._ordered_columns = [
+                Column(label=label, content_width=content_width, auto_width=True)
+                for label, content_width in zip(
+                    self.backend.columns, self.backend.column_content_widths
+                )
+            ]
+        return self._ordered_columns
 
-    @property
-    def ordered_rows(self) -> list[Row]:
-        """The list of Rows in the DataTable, ordered as they appear on screen."""
-        num_rows = self.row_count
-        update_count = self._update_count
-        cache_key = (num_rows, update_count)
-        if cache_key in self._ordered_row_cache:
-            ordered_rows = self._ordered_row_cache[cache_key]
-        else:
-            row_indices = range(num_rows)
-            ordered_rows = []
-            for row_index in row_indices:
-                row_key = self._row_locations.get_key(row_index)
-                row = self.rows[row_key]
-                ordered_rows.append(row)
-            self._ordered_row_cache[cache_key] = ordered_rows
-        return ordered_rows
+    # @property
+    # def ordered_rows(self) -> list[Row]:
+    #     """The list of Rows in the DataTable, ordered as they appear on screen."""
+    #     raise NotImplementedError("Unused and unwise.")
+    #     num_rows = self.row_count
+    #     update_count = self._update_count
+    #     cache_key = (num_rows, update_count)
+    #     if cache_key in self._ordered_row_cache:
+    #         ordered_rows = self._ordered_row_cache[cache_key]
+    #     else:
+    #         row_indices = range(num_rows)
+    #         ordered_rows = []
+    #         for row_index in row_indices:
+    #             row_key = self._row_locations.get_key(row_index)
+    #             row = self.rows[row_key]
+    #             ordered_rows.append(row)
+    #         self._ordered_row_cache[cache_key] = ordered_rows
+    #     return ordered_rows
 
     @property
     def _should_render_row_labels(self) -> bool:
@@ -1807,16 +1587,17 @@ class DataTable(ScrollView, Generic[CellType], can_focus=True):
 
         formatted_row_cells = [
             Text() if datum is None else default_cell_formatter(datum) or empty
-            for datum, _ in zip_longest(ordered_row, range(len(self.columns)))
+            for datum, _ in zip_longest(ordered_row, range(self.backend.column_count))
         ]
         label = None
         if self._should_render_row_labels:
-            row_metadata = self.rows.get(self._row_locations.get_key(row_index))
-            label = (
-                default_cell_formatter(row_metadata.label)
-                if row_metadata.label
-                else None
-            )
+            raise NotImplementedError("Todo: support row labels")
+            # row_metadata = self.rows.get(self._row_locations.get_key(row_index))
+            # label = (
+            #     default_cell_formatter(row_metadata.label)
+            #     if row_metadata.label
+            #     else None
+            # )
         return RowRenderables(label, formatted_row_cells)
 
     def _render_cell(
@@ -1850,15 +1631,9 @@ class DataTable(ScrollView, Generic[CellType], can_focus=True):
             and (row_index < self.fixed_rows or column_index < self.fixed_columns)
         )
 
-        if is_header_cell:
-            row_key = self._header_row_key
-        else:
-            row_key = self._row_locations.get_key(row_index)
-
-        column_key = self._column_locations.get_key(column_index)
         cell_cache_key: CellCacheKey = (
-            row_key,
-            column_key,
+            row_index,
+            column_index,
             base_style,
             cursor,
             hover,
@@ -1893,15 +1668,14 @@ class DataTable(ScrollView, Generic[CellType], can_focus=True):
                     width, self.header_height
                 )
             else:
-                row = self.rows[row_key]
+                # TODO: support rows with height > 1
+                # row = self.rows[row_key]
                 # If an auto-height row hasn't had its height calculated, we don't fix
                 # the value for `height` so that we can measure the height of the cell.
-                if row.auto_height and row.height == 0:
-                    options = self.app.console.options.update_width(width)
-                else:
-                    options = self.app.console.options.update_dimensions(
-                        width, row.height
-                    )
+                # if row.auto_height and row.height == 0:
+                #     options = self.app.console.options.update_width(width)
+                # else:
+                options = self.app.console.options.update_dimensions(width, 1)
             lines = self.app.console.render_lines(
                 Styled(
                     Padding(cell, (0, 1)),
@@ -1976,7 +1750,7 @@ class DataTable(ScrollView, Generic[CellType], can_focus=True):
 
     def _render_line_in_row(
         self,
-        row_key: RowKey,
+        row_index: int,
         line_no: int,
         base_style: Style,
         cursor_location: Coordinate,
@@ -1999,7 +1773,7 @@ class DataTable(ScrollView, Generic[CellType], can_focus=True):
         show_cursor = self.show_cursor
 
         cache_key = (
-            row_key,
+            row_index,
             line_no,
             base_style,
             cursor_location,
@@ -2018,9 +1792,7 @@ class DataTable(ScrollView, Generic[CellType], can_focus=True):
         render_cell = self._render_cell
         header_style = self.get_component_styles("datatable--header").rich_style
 
-        if row_key in self._row_locations:
-            row_index = self._row_locations.get(row_key)
-        else:
+        if not self.is_valid_row_index(row_index):
             row_index = -1
 
         # If the row has a label, add it to fixed_row here with correct style.
@@ -2040,7 +1812,8 @@ class DataTable(ScrollView, Generic[CellType], can_focus=True):
             fixed_row.append(label_cell_lines)
 
         if self.fixed_columns:
-            if row_key is self._header_row_key:
+            # TODO: off by one?
+            if row_index == self._header_row_index:
                 fixed_style = header_style  # We use the header style either way.
             else:
                 fixed_style = self.get_component_styles("datatable--fixed").rich_style
@@ -2087,7 +1860,7 @@ class DataTable(ScrollView, Generic[CellType], can_focus=True):
         )
         remaining_space = max(0, widget_width - table_width)
         background_color = self.background_colors[1]
-        faded_color = Color.from_rich_color(row_style.bgcolor).blend(
+        faded_color = Color.from_rich_color(row_style.bgcolor).blend(  # type: ignore
             background_color, factor=0.25
         )
         faded_style = Style.from_color(
@@ -2099,7 +1872,7 @@ class DataTable(ScrollView, Generic[CellType], can_focus=True):
         self._row_render_cache[cache_key] = row_pair
         return row_pair
 
-    def _get_offsets(self, y: int) -> tuple[RowKey, int]:
+    def _get_offsets(self, y: int) -> tuple[int, int]:
         """Get row key and line offset for a given line.
 
         Args:
@@ -2108,6 +1881,7 @@ class DataTable(ScrollView, Generic[CellType], can_focus=True):
         Returns:
             Row key and line (y) offset within cell.
         """
+        raise NotImplementedError("todo: support heights > 1")
         header_height = self.header_height
         y_offsets = self._y_offsets
         if self.show_header:
@@ -2135,9 +1909,13 @@ class DataTable(ScrollView, Generic[CellType], can_focus=True):
 
         width = self.size.width
 
-        try:
-            row_key, y_offset_in_row = self._get_offsets(y)
-        except LookupError:
+        # todo: support rows with height > 1
+        # try:
+        #     row_key, y_offset_in_row = self._get_offsets(y)
+        # except LookupError:
+        #     return Strip.blank(width, base_style)
+        row_index = y - 1
+        if not self.is_valid_row_index(row_index) and row_index != -1:
             return Strip.blank(width, base_style)
 
         cache_key = (
@@ -2157,8 +1935,8 @@ class DataTable(ScrollView, Generic[CellType], can_focus=True):
             return self._line_cache[cache_key]
 
         fixed, scrollable = self._render_line_in_row(
-            row_key,
-            y_offset_in_row,
+            row_index,
+            0,
             base_style,
             cursor_location=self.cursor_coordinate,
             hover_location=self.hover_coordinate,
@@ -2181,19 +1959,15 @@ class DataTable(ScrollView, Generic[CellType], can_focus=True):
         return super().render_lines(crop)
 
     def render_line(self, y: int) -> Strip:
-        width, height = self.size
+        width, _ = self.size
         scroll_x, scroll_y = self.scroll_offset
 
-        fixed_row_keys: list[RowKey] = [
-            self._row_locations.get_key(row_index)
-            for row_index in range(self.fixed_rows)
-        ]
-
-        fixed_rows_height = sum(
-            self.get_row_height(row_key) for row_key in fixed_row_keys
-        )
+        fixed_rows_height = self.fixed_rows
+        # sum(
+        #     self.get_row_height(row_key) for row_key in fixed_row_keys
+        # )
         if self.show_header:
-            fixed_rows_height += self.get_row_height(self._header_row_key)
+            fixed_rows_height += self.header_height
 
         if y >= fixed_rows_height:
             y += scroll_y
@@ -2257,7 +2031,7 @@ class DataTable(ScrollView, Generic[CellType], can_focus=True):
                 row_style = base_style
         return row_style
 
-    def _on_mouse_move(self, event: events.MouseMove):
+    def _on_mouse_move(self, event: events.MouseMove) -> None:
         """If the hover cursor is visible, display it by extracting the row
         and column metadata from the segments present in the cells."""
         self._set_hover_cursor(True)
@@ -2280,7 +2054,9 @@ class DataTable(ScrollView, Generic[CellType], can_focus=True):
         that is occupied by fixed rows and columns respectively. Fixed rows and columns
         are rows and columns that do not participate in scrolling."""
         top = self.header_height if self.show_header else 0
-        top += sum(row.height for row in self.ordered_rows[: self.fixed_rows])
+        # TODO: Support row heights > 1
+        # top += sum(row.height for row in self.ordered_rows[: self.fixed_rows])
+        top += self.fixed_rows
         left = (
             sum(
                 column.render_width
@@ -2290,37 +2066,38 @@ class DataTable(ScrollView, Generic[CellType], can_focus=True):
         )
         return Spacing(top, 0, 0, left)
 
-    def sort(
-        self,
-        *columns: ColumnKey | str,
-        reverse: bool = False,
-    ) -> Self:
-        """Sort the rows in the `DataTable` by one or more column keys.
+    # def sort(
+    #     self,
+    #     *columns: int | str,
+    #     reverse: bool = False,
+    # ) -> Self:
+    #     """Sort the rows in the `DataTable` by one or more column keys.
 
-        Args:
-            columns: One or more columns to sort by the values in.
-            reverse: If True, the sort order will be reversed.
+    #     Args:
+    #         columns: One or more columns to sort by the values in.
+    #         reverse: If True, the sort order will be reversed.
 
-        Returns:
-            The `DataTable` instance.
-        """
+    #     Returns:
+    #         The `DataTable` instance.
+    #     """
+    #     raise NotImplementedError("Todo: implement Sort")
 
-        def sort_by_column_keys(
-            row: tuple[RowKey, dict[ColumnKey | str, CellType]]
-        ) -> Any:
-            _, row_data = row
-            result = itemgetter(*columns)(row_data)
-            return result
+    #     def sort_by_column_keys(
+    #         row: tuple[RowKey, dict[ColumnKey | str, CellType]]
+    #     ) -> Any:
+    #         _, row_data = row
+    #         result = itemgetter(*columns)(row_data)
+    #         return result
 
-        ordered_rows = sorted(
-            self._data.items(), key=sort_by_column_keys, reverse=reverse
-        )
-        self._row_locations = TwoWayDict(
-            {key: new_index for new_index, (key, _) in enumerate(ordered_rows)}
-        )
-        self._update_count += 1
-        self.refresh()
-        return self
+    #     ordered_rows = sorted(
+    #         self._data.items(), key=sort_by_column_keys, reverse=reverse
+    #     )
+    #     self._row_locations = TwoWayDict(
+    #         {key: new_index for new_index, (key, _) in enumerate(ordered_rows)}
+    #     )
+    #     self._update_count += 1
+    #     self.refresh()
+    #     return self
 
     def _scroll_cursor_into_view(self, animate: bool = False) -> None:
         """When the cursor is at a boundary of the DataTable and moves out
@@ -2370,16 +2147,15 @@ class DataTable(ScrollView, Generic[CellType], can_focus=True):
         if is_header_click:
             # Header clicks work even if cursor is off, and doesn't move the cursor.
             column = self.ordered_columns[column_index]
-            message = DataTable.HeaderSelected(
-                self, column.key, column_index, label=column.label
-            )
+            message = DataTable.HeaderSelected(self, column_index, label=column.label)
             self.post_message(message)
         elif is_row_label_click:
-            row = self.ordered_rows[row_index]
-            message = DataTable.RowLabelSelected(
-                self, row.key, row_index, label=row.label
+            # TODO: support row labels.
+            # row = self.ordered_rows[row_index]
+            row_message = DataTable.RowLabelSelected(
+                self, row_index, label=Text()  # label=row.label
             )
-            self.post_message(message)
+            self.post_message(row_message)
         elif self.show_cursor and self.cursor_type != "none":
             # Only post selection events if there is a visible row/col/cell cursor.
             self.cursor_coordinate = Coordinate(row_index, column_index)
@@ -2394,14 +2170,15 @@ class DataTable(ScrollView, Generic[CellType], can_focus=True):
             height = self.size.height - (self.header_height if self.show_header else 0)
 
             # Determine how many rows constitutes a "page"
-            offset = 0
             rows_to_scroll = 0
             row_index, column_index = self.cursor_coordinate
-            for ordered_row in self.ordered_rows[row_index:]:
-                offset += ordered_row.height
-                if offset > height:
-                    break
-                rows_to_scroll += 1
+            # TODO: support rows with height > 1
+            # for ordered_row in self.ordered_rows[row_index:]:
+            #     offset += ordered_row.height
+            #     if offset > height:
+            #         break
+            #     rows_to_scroll += 1
+            rows_to_scroll = height
 
             self.cursor_coordinate = Coordinate(
                 row_index + rows_to_scroll - 1, column_index
@@ -2416,14 +2193,15 @@ class DataTable(ScrollView, Generic[CellType], can_focus=True):
             height = self.size.height - (self.header_height if self.show_header else 0)
 
             # Determine how many rows constitutes a "page"
-            offset = 0
-            rows_to_scroll = 0
             row_index, column_index = self.cursor_coordinate
-            for ordered_row in self.ordered_rows[: row_index + 1]:
-                offset += ordered_row.height
-                if offset > height:
-                    break
-                rows_to_scroll += 1
+            # TODO: support rows with height > 1
+            # rows_to_scroll = 0
+            # for ordered_row in self.ordered_rows[: row_index + 1]:
+            #     offset += ordered_row.height
+            #     if offset > height:
+            #         break
+            #     rows_to_scroll += 1
+            rows_to_scroll = min(row_index + 1, height)
 
             self.cursor_coordinate = Coordinate(
                 row_index - rows_to_scroll + 1, column_index
@@ -2492,27 +2270,23 @@ class DataTable(ScrollView, Generic[CellType], can_focus=True):
         if self.show_cursor and self.cursor_type != "none":
             self._post_selected_message()
 
-    def _post_selected_message(self):
+    def _post_selected_message(self) -> None:
         """Post the appropriate message for a selection based on the `cursor_type`."""
         cursor_coordinate = self.cursor_coordinate
         cursor_type = self.cursor_type
-        if len(self._data) == 0:
+        if self.backend.row_count == 0:
             return
-        cell_key = self.coordinate_to_cell_key(cursor_coordinate)
         if cursor_type == "cell":
             self.post_message(
                 DataTable.CellSelected(
                     self,
                     self.get_cell_at(cursor_coordinate),
                     coordinate=cursor_coordinate,
-                    cell_key=cell_key,
                 )
             )
         elif cursor_type == "row":
             row_index, _ = cursor_coordinate
-            row_key, _ = cell_key
-            self.post_message(DataTable.RowSelected(self, row_index, row_key))
+            self.post_message(DataTable.RowSelected(self, row_index))
         elif cursor_type == "column":
             _, column_index = cursor_coordinate
-            _, column_key = cell_key
-            self.post_message(DataTable.ColumnSelected(self, column_index, column_key))
+            self.post_message(DataTable.ColumnSelected(self, column_index))

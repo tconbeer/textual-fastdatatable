@@ -1,5 +1,5 @@
 from textual.app import App, ComposeResult
-from textual_fastdatatable import DataTable
+from textual_fastdatatable import DataTable, ArrowBackend
 
 ROWS = [
     ("lane", "swimmer", "country", "time"),
@@ -17,12 +17,8 @@ ROWS = [
 
 class TableApp(App):
     def compose(self) -> ComposeResult:
-        yield DataTable()
-
-    def on_mount(self) -> None:
-        table = self.query_one(DataTable)
-        table.add_columns(*ROWS[0])
-        table.add_rows(ROWS[1:])
+        backend = ArrowBackend.from_records(ROWS, has_header=True)
+        yield DataTable(backend)
 
 
 app = TableApp()

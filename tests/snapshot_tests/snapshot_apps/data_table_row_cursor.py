@@ -2,7 +2,7 @@ import csv
 import io
 
 from textual.app import App, ComposeResult
-from textual_fastdatatable import DataTable
+from textual_fastdatatable import DataTable, ArrowBackend
 
 CSV = """lane,swimmer,country,time
 4,Joseph Schooling,Singapore,50.39
@@ -17,18 +17,18 @@ CSV = """lane,swimmer,country,time
 
 class TableApp(App):
     def compose(self) -> ComposeResult:
-        table = DataTable()
+        rows = csv.reader(io.StringIO(CSV))
+        labels = next(rows)
+        data = [row for row in rows]
+        backend = ArrowBackend.from_pydict(
+            {label: [row[i] for row in data] for i, label in enumerate(labels)}
+        )
+        table = DataTable(backend)
         table.focus()
         table.cursor_type = "row"
         table.fixed_columns = 1
         table.fixed_rows = 1
         yield table
-
-    def on_mount(self) -> None:
-        table = self.query_one(DataTable)
-        rows = csv.reader(io.StringIO(CSV))
-        table.add_columns(*next(rows))
-        table.add_rows(rows)
 
 
 if __name__ == "__main__":
