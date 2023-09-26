@@ -660,7 +660,7 @@ class DataTable(ScrollView, can_focus=True):
         row_key, column_key = self.coordinate_to_cell_key(coordinate)
         self.update_cell(row_key, column_key, value, update_width=update_width)
 
-    def get_cell_at(self, coordinate: Coordinate) -> CellType:
+    def get_cell_at(self, coordinate: Coordinate) -> Any:
         """Get the value from the cell occupying the given coordinate.
 
         Args:
@@ -698,7 +698,7 @@ class DataTable(ScrollView, can_focus=True):
     #     ]
     #     return ordered_row
 
-    def get_row_at(self, row_index: int) -> list[CellType]:
+    def get_row_at(self, row_index: int) -> list[Any]:
         """Get the values from the cells in a row at a given index. This will
         return the values from a row based on the rows _current position_ in
         the table.
@@ -737,7 +737,7 @@ class DataTable(ScrollView, can_focus=True):
     #         row_key = row_metadata.key
     #         yield data[row_key][column_key]
 
-    def get_column_at(self, column_index: int) -> Iterable[CellType]:
+    def get_column_at(self, column_index: int) -> Iterable[Any]:
         """Get the values from the column at a given index.
 
         Args:

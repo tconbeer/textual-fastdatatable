@@ -2,14 +2,13 @@ from __future__ import annotations
 
 import asyncio
 import timeit
-from pathlib import Path
-from typing import Type
 from functools import partial
+from pathlib import Path
 
 import pandas as pd
-from textual._path import CSSPathType
-from textual.app import App, CSSPathType, ComposeResult
+from textual.app import App, ComposeResult
 from textual.driver import Driver
+from textual.types import CSSPathType
 from textual.widgets import DataTable as BuiltinDataTable
 from textual_fastdatatable import ArrowBackend
 from textual_fastdatatable import DataTable as FastDataTable
