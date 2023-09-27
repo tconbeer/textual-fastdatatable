@@ -1110,16 +1110,6 @@ files = [
 numpy = ">=1.16.6"
 
 [[package]]
-name = "pyarrow-stubs"
-version = "10.0.1.6"
-description = "Type annotations for pyarrow"
-optional = false
-python-versions = ">=3.7,<3.11"
-files = [
-    {file = "pyarrow_stubs-10.0.1.6-py3-none-any.whl", hash = "sha256:b519f2600dfdf1451086fd026ffb628a096a24b3f3dc7224c1322d23e81e6cd5"},
-]
-
-[[package]]
 name = "pygments"
 version = "2.16.1"
 description = "Pygments is a syntax highlighting package written in Python."
@@ -1537,32 +1527,6 @@ files = [
 tree-sitter = "*"
 
 [[package]]
-name = "types-docutils"
-version = "0.20.0.3"
-description = "Typing stubs for docutils"
-optional = false
-python-versions = "*"
-files = [
-    {file = "types-docutils-0.20.0.3.tar.gz", hash = "sha256:4928e790f42b99d5833990f99c8dd9fa9f16825f6ed30380ca981846d36870cd"},
-    {file = "types_docutils-0.20.0.3-py3-none-any.whl", hash = "sha256:a930150d8e01a9170f9bca489f46808ddebccdd8bc1e47c07968a77e49fb9321"},
-]
-
-[[package]]
-name = "types-pygments"
-version = "2.16.0.0"
-description = "Typing stubs for Pygments"
-optional = false
-python-versions = "*"
-files = [
-    {file = "types-Pygments-2.16.0.0.tar.gz", hash = "sha256:aa93e4664e2d6cfea7570cde156e3966bf939f9c7d736cd179c4c8e94f7600b2"},
-    {file = "types_Pygments-2.16.0.0-py3-none-any.whl", hash = "sha256:4624a547d5ba73c971fac5d6fd327141e85e65f6123448bee76f0c8557652a71"},
-]
-
-[package.dependencies]
-types-docutils = "*"
-types-setuptools = "*"
-
-[[package]]
 name = "types-pytz"
 version = "2023.3.1.1"
 description = "Typing stubs for pytz"
@@ -1571,17 +1535,6 @@ python-versions = "*"
 files = [
     {file = "types-pytz-2023.3.1.1.tar.gz", hash = "sha256:cc23d0192cd49c8f6bba44ee0c81e4586a8f30204970fc0894d209a6b08dab9a"},
     {file = "types_pytz-2023.3.1.1-py3-none-any.whl", hash = "sha256:1999a123a3dc0e39a2ef6d19f3f8584211de9e6a77fe7a0259f04a524e90a5cf"},
-]
-
-[[package]]
-name = "types-setuptools"
-version = "68.2.0.0"
-description = "Typing stubs for setuptools"
-optional = false
-python-versions = "*"
-files = [
-    {file = "types-setuptools-68.2.0.0.tar.gz", hash = "sha256:a4216f1e2ef29d089877b3af3ab2acf489eb869ccaf905125c69d2dc3932fd85"},
-    {file = "types_setuptools-68.2.0.0-py3-none-any.whl", hash = "sha256:77edcc843e53f8fc83bb1a840684841f3dc804ec94562623bfa2ea70d5a2ba1b"},
 ]
 
 [[package]]
@@ -1745,4 +1698,4 @@ testing = ["big-O", "jaraco.functools", "jaraco.itertools", "more-itertools", "p
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.8"
-content-hash = "695247f4a5604a59de104898f5217309e6a1c6e068aa6ff3d6856b686b90433e"
+content-hash = "14bb9eb1d183d00695ecb21f83e3b7d788b1fd0f8543fa19b766bd5fb7f90519"
