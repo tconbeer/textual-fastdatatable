@@ -49,7 +49,7 @@ class FastApp(App):
 
     def compose(self) -> ComposeResult:
         backend = ArrowBackend.from_parquet(self.data_path)
-        yield FastDataTable(backend)
+        yield FastDataTable(backend=backend)
 
 
 if __name__ == "__main__":

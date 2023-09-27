@@ -25,18 +25,38 @@ pip install textual-fastdatatable
 
 ## Usage
 
-If you already have data in Apache Arrow format:
+If you already have data in Apache Arrow or another common table format:
 
 ```py
-from textual_fastdatatable import ArrowBackend, DataTable
-backend = ArrowBackend(data=my_arrow_table)
-data_table = DataTable(backend)
+from textual_fastdatatable import DataTable
+data_table = DataTable(data = my_data)
 ```
 
-`ArrowBackend` also provides constructors for common types:
+The currently supported types are:
 
 ```py
-from textual_fastdatatable import ArrowBackend, DataTable
+AutoBackendType = Union[
+    pa.Table,
+    pa.RecordBatch,
+    Path, # to parquet only
+    str, # path to parquet only
+    Sequence[Iterable[Any]],
+    Mapping[str, Sequence[Any]],
+]
+```
+
+To override the column labels and widths supplied by the backend:
+```py
+from textual_fastdatatable import DataTable
+data_table = DataTable(data = my_data, column_labels=["Supports", "[red]Console[/]", "Markup!"], column_widths=[10, 5, None])
+```
+
+You can also pass in a `backend` manually (if you want more control or want to plug in your own).
+
+```py
+from textual_fastdatatable import ArrowBackend, DataTable, create_backend
+backend = create_backend(my_data)
+backend = ArrowBackend(my_arrow_table)
 # from python dictionary in the form key: col_values
 backend = ArrowBackend.from_pydict(
     {
@@ -65,6 +85,6 @@ The `DataTable` does not currently support rows with a height of more than one l
 The `ArrowBackend` is optimized to be fast for large, immutable datasets. Mutating the data,
 especially adding or removing rows, may be slow.
 
-The `ArrowBackend` cannot be initialized without data.
+The `ArrowBackend` cannot be initialized without data, however, the DataTable can (either with or without `column_labels`).
 
 The `ArrowBackend` cannot store arbitrary Python objects or Rich Renderables as values. It may widen types to strings unnecessarily.

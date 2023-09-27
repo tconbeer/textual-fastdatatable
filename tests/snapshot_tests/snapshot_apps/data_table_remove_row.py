@@ -27,7 +27,7 @@ class TableApp(App):
 
     def compose(self) -> ComposeResult:
         backend = ArrowBackend.from_records(ROWS)
-        yield DataTable(backend)
+        yield DataTable(backend=backend)
 
     def on_mount(self) -> None:
         table = self.query_one(DataTable)

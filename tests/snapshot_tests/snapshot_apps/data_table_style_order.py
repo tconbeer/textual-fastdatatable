@@ -20,7 +20,7 @@ def make_datatable(
         {"Movies": [f"[red on blue]{row}" for row in data]}
     )
     table = DataTable(
-        backend,
+        backend=backend,
         cursor_foreground_priority=foreground_priority,
         cursor_background_priority=background_priority,
     )
