@@ -30,7 +30,6 @@ black = "^23.3.0"
 ruff = ">=0.0.285"
 mypy = "^1.2.0"
 pandas-stubs = { version="^2.1.1", python=">=3.9,<3.13" }
-pyarrow-stubs = { version="^10.0.1.6", python=">=3.8,<3.11" }
 
 [tool.poetry.group.test.dependencies]
 pytest = "^7.3.1"

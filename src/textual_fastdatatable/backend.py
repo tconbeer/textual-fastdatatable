@@ -134,12 +134,12 @@ class ArrowBackend(DataTableBackend):
     def column_content_widths(self) -> list[int]:
         if not self._column_content_widths:
             if self._string_data is None:
-                self._string_data = pa.Table.from_arrays(  # type: ignore
-                    arrays=[arr.cast("string") for arr in self.data.columns],
+                self._string_data = pa.Table.from_arrays(
+                    arrays=[arr.cast(pa.string()) for arr in self.data.columns],
                     names=self.data.column_names,
                 )
             self._column_content_widths = [
-                pc.max(pc.utf8_length(arr)).as_py()  # type: ignore
+                pc.max(pc.utf8_length(arr)).as_py()
                 for arr in self._string_data.itercolumns()
             ]
         return self._column_content_widths
@@ -185,10 +185,10 @@ class ArrowBackend(DataTableBackend):
         pydict = self._pydict_from_records(records_with_headers)
         old_rows = self.data.to_batches()
         new_rows = pa.RecordBatch.from_pydict(
-            pydict,  # type: ignore
+            pydict,
             schema=self.data.schema,
         )
-        self.data = pa.Table.from_batches([*old_rows, new_rows])  # type: ignore
+        self.data = pa.Table.from_batches([*old_rows, new_rows])
         self._reset_content_widths()
         return indicies
 
@@ -197,7 +197,7 @@ class ArrowBackend(DataTableBackend):
             raise IndexError(f"Can't drop row {row_index} of {self.row_count}")
         above = self.data.slice(0, row_index).to_batches()
         below = self.data.slice(row_index + 1).to_batches()
-        self.data = pa.Table.from_batches([*above, *below])  # type: ignore
+        self.data = pa.Table.from_batches([*above, *below])
         self._reset_content_widths()
         pass
 
@@ -209,13 +209,13 @@ class ArrowBackend(DataTableBackend):
         self.data = self.data.set_column(
             column_index,
             self.data.column_names[column_index],
-            pa.array(pycolumn, type=new_type),  # type: ignore
+            pa.array(pycolumn, type=new_type),
         )
         if self._string_data is not None:
             self._string_data = self._string_data.set_column(
                 column_index,
                 self.data.column_names[column_index],
-                pa.array(pycolumn, type=pa.string()),  # type: ignore
+                pa.array(pycolumn, type=pa.string()),
             )
         if self._column_content_widths:
             self._column_content_widths[column_index] = max(
@@ -230,4 +230,4 @@ class ArrowBackend(DataTableBackend):
         by: list[tuple] sorts the table by the named column(s) with the directions
             indicated.
         """
-        self.data = self.data.sort_by(by)  # type: ignore
+        self.data = self.data.sort_by(by)
