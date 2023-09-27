@@ -46,7 +46,7 @@ class StatusTable(DataTable):
                 "Baz": ["IJKLMNOPQRSTUVWXYZ"] * 50,
             }
         )
-        super().__init__(backend)
+        super().__init__(backend=backend)
 
         self.cursor_type = "row"
         self.show_cursor = False

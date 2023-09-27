@@ -2,11 +2,42 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Any, Dict, Iterable, Literal, Mapping, Sequence
+from typing import Any, Dict, Iterable, Literal, Mapping, Sequence, Union
 
 import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.parquet as pq
+
+AutoBackendType = Union[
+    pa.Table,
+    pa.RecordBatch,
+    Path,
+    str,
+    Sequence[Iterable[Any]],
+    Mapping[str, Sequence[Any]],
+]
+
+
+def create_backend(data: AutoBackendType) -> DataTableBackend:
+    if isinstance(data, pa.Table):
+        return ArrowBackend(data)
+    elif isinstance(data, pa.RecordBatch):
+        return ArrowBackend.from_batches(data)
+    elif isinstance(data, Path) or isinstance(data, str):
+        return ArrowBackend.from_parquet(data)
+    elif isinstance(data, Sequence) and isinstance(data[0], Iterable):
+        return ArrowBackend.from_records(data)
+    elif (
+        isinstance(data, Mapping)
+        and isinstance(next(iter(data.keys())), str)
+        and isinstance(next(iter(data.values())), Sequence)
+    ):
+        return ArrowBackend.from_pydict(data)
+    else:
+        raise TypeError(
+            f"Cannot automatically create backend for data of type: {type(data)}. "
+            f"Data must be of type: {AutoBackendType}."
+        )
 
 
 class DataTableBackend(ABC):
@@ -102,11 +133,14 @@ class ArrowBackend(DataTableBackend):
         return pydict
 
     @classmethod
-    def from_records(
-        cls, records: Sequence[Iterable[Any]], has_header: bool = True
-    ) -> "ArrowBackend":
-        pydict = cls._pydict_from_records(records, has_header)
-        return cls.from_pydict(pydict)
+    def from_batches(cls, data: pa.RecordBatch) -> "ArrowBackend":
+        tbl = pa.Table.from_batches([data])
+        return cls(tbl)
+
+    @classmethod
+    def from_parquet(cls, path: Path | str) -> "ArrowBackend":
+        tbl = pq.read_table(str(path))
+        return cls(tbl)
 
     @classmethod
     def from_pydict(cls, data: Mapping[str, Sequence[Any]]) -> "ArrowBackend":
@@ -114,9 +148,11 @@ class ArrowBackend(DataTableBackend):
         return cls(tbl)
 
     @classmethod
-    def from_parquet(cls, path: Path | str) -> "ArrowBackend":
-        tbl = pq.read_table(str(path))
-        return cls(tbl)
+    def from_records(
+        cls, records: Sequence[Iterable[Any]], has_header: bool = True
+    ) -> "ArrowBackend":
+        pydict = cls._pydict_from_records(records, has_header)
+        return cls.from_pydict(pydict)
 
     @property
     def row_count(self) -> int:

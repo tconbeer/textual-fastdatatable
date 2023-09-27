@@ -70,3 +70,23 @@ def test_datatable_add_row_auto_height_sorted(snap_compare) -> None:
     assert snap_compare(
         SNAPSHOT_APPS_DIR / "data_table_add_row_auto_height.py", press=["s"]
     )
+
+
+def test_datatable_empty(snap_compare) -> None:
+    assert snap_compare(SNAPSHOT_APPS_DIR / "empty.py")
+
+
+def test_datatable_no_rows(snap_compare) -> None:
+    assert snap_compare(SNAPSHOT_APPS_DIR / "no_rows.py")
+
+
+def test_datatable_from_parquet(snap_compare) -> None:
+    assert snap_compare(SNAPSHOT_APPS_DIR / "from_parquet.py")
+
+
+def test_datatable_from_records(snap_compare) -> None:
+    assert snap_compare(SNAPSHOT_APPS_DIR / "from_records.py")
+
+
+def test_datatable_from_pydict(snap_compare) -> None:
+    assert snap_compare(SNAPSHOT_APPS_DIR / "from_pydict_with_col_labels.py")

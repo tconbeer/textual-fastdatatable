@@ -20,7 +20,7 @@ class AddColumn(App):
 
     def compose(self) -> ComposeResult:
         backend = ArrowBackend.from_pydict({"Movies": MOVIES})
-        table = DataTable(backend)
+        table = DataTable(backend=backend)
 
         column_idx = table.add_column("No Default")
         table.add_column("With Default", default="ABC")

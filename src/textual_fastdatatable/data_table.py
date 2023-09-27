@@ -54,7 +54,7 @@ from textual.strip import Strip
 from textual.widget import PseudoClasses
 from typing_extensions import Literal, Self
 
-from textual_fastdatatable import DataTableBackend
+from textual_fastdatatable import DataTableBackend, create_backend
 
 CursorType = Literal["cell", "row", "column", "none"]
 """The valid types of cursors for 
@@ -267,6 +267,11 @@ class DataTable(ScrollView, can_focus=True):
         Coordinate(0, 0), repaint=False, always_update=True
     )
     """The coordinate of the `DataTable` that is being hovered."""
+
+    class DataLoadError(Message):
+        def __init__(self, exception: Exception) -> None:
+            super().__init__()
+            self.exception = exception
 
     class CellHighlighted(Message):
         """Posted when the cursor moves to highlight a new cell.
@@ -482,8 +487,11 @@ class DataTable(ScrollView, can_focus=True):
 
     def __init__(
         self,
-        backend: DataTableBackend,
         *,
+        backend: DataTableBackend | None = None,
+        data: Any | None = None,
+        column_labels: list[str | Text] | None = None,
+        column_widths: list[int | None] | None = None,
         show_header: bool = True,
         show_row_labels: bool = True,
         fixed_rows: int = 0,
@@ -500,7 +508,22 @@ class DataTable(ScrollView, can_focus=True):
         disabled: bool = False,
     ) -> None:
         super().__init__(name=name, id=id, classes=classes, disabled=disabled)
-        self.backend: DataTableBackend = backend
+        # TODO: HANDLE EMPTY CASE
+        try:
+            self.backend: DataTableBackend | None = (
+                backend if backend is not None else create_backend(data)  # type: ignore
+            )
+        except (TypeError, OSError) as e:
+            self.backend = None
+            if data is not None:
+                self.post_message(self.DataLoadError(e))
+
+        self._column_labels: list[str | Text] | None = (
+            list(column_labels) if column_labels is not None else None
+        )
+        self._column_widths: list[int | None] | None = (
+            list(column_widths) if column_widths is not None else None
+        )
         self._ordered_columns: None | list[Column] = None
 
         self._row_render_cache: LRUCache[
@@ -596,7 +619,10 @@ class DataTable(ScrollView, can_focus=True):
     @property
     def row_count(self) -> int:
         """The number of rows currently present in the DataTable."""
-        return self.backend.row_count
+        if self.backend is None:
+            return 0
+        else:
+            return self.backend.row_count
 
     @property
     def _total_row_height(self) -> int:
@@ -604,7 +630,16 @@ class DataTable(ScrollView, can_focus=True):
         The total height of all rows within the DataTable, NOT including the header.
         """
         # TODO: support rows with height > 1
-        return self.backend.row_count
+        return self.row_count
+
+    @property
+    def column_count(self) -> int:
+        if self.backend is not None:
+            return self.backend.column_count
+        elif self._column_labels is not None:
+            return len(self._column_labels)
+        else:
+            return 0
 
     def update_cell(
         self,
@@ -627,7 +662,8 @@ class DataTable(ScrollView, can_focus=True):
             CellDoesNotExist: When the supplied `row_key` and `column_key`
                 cannot be found in the table.
         """
-
+        if self.backend is None:
+            raise CellDoesNotExist("No data in the table")
         try:
             self.backend.update_cell(row_index, column_index, value)
         except IndexError:
@@ -672,6 +708,8 @@ class DataTable(ScrollView, can_focus=True):
         Raises:
             CellDoesNotExist: If there is no cell with the given coordinate.
         """
+        if self.backend is None:
+            raise CellDoesNotExist("No data in the table")
         try:
             return self.backend.get_cell_at(coordinate.row, coordinate.column)
         except IndexError as e:
@@ -712,7 +750,7 @@ class DataTable(ScrollView, can_focus=True):
         Raises:
             RowDoesNotExist: If there is no row with the given index.
         """
-        if not self.is_valid_row_index(row_index):
+        if self.backend is None or not self.is_valid_row_index(row_index):
             raise RowDoesNotExist(f"Row index {row_index!r} is not valid.")
         return list(self.backend.get_row_at(row_index))
 
@@ -749,7 +787,7 @@ class DataTable(ScrollView, can_focus=True):
         Raises:
             ColumnDoesNotExist: If there is no column with the given index.
         """
-        if not self.is_valid_column_index(column_index):
+        if self.backend is None or not self.is_valid_column_index(column_index):
             raise ColumnDoesNotExist(f"Column index {column_index!r} is not valid.")
 
         yield from self.backend.get_column_at(column_index)
@@ -909,8 +947,8 @@ class DataTable(ScrollView, can_focus=True):
     def _clamp_cursor_coordinate(self, coordinate: Coordinate) -> Coordinate:
         """Clamp a coordinate such that it falls within the boundaries of the table."""
         row, column = coordinate
-        row = clamp(row, 0, self.backend.row_count - 1)
-        column = clamp(column, 0, self.backend.column_count - 1)
+        row = clamp(row, 0, self.row_count - 1)
+        column = clamp(column, 0, self.column_count - 1)
         return Coordinate(row, column)
 
     def watch_cursor_type(self, old: str, new: str) -> None:
@@ -1194,21 +1232,29 @@ class DataTable(ScrollView, can_focus=True):
         label = Text.from_markup(label) if isinstance(label, str) else label
         label_width = measure(self.app.console, label, 1)
         if width is None:
-            Column(
+            col = Column(
                 label,
                 label_width,
                 content_width=label_width,
                 auto_width=True,
             )
         else:
-            Column(
+            col = Column(
                 label,
                 width,
                 content_width=label_width,
             )
+        if self._ordered_columns is not None:
+            self._ordered_columns.append(col)
+        elif self._column_labels is not None:
+            self._column_labels.append(label)
+
+        if self._column_widths is not None:
+            self._column_widths.append(width)
 
         # Update backend to account for the new column.
-        column_index = self.backend.append_column(str(label), default=default)
+        if self.backend is not None:
+            column_index = self.backend.append_column(str(label), default=default)
 
         self._require_update_dimensions = True
         self.check_idle()
@@ -1272,7 +1318,11 @@ class DataTable(ScrollView, can_focus=True):
                 the `add_row` method docstring for more information on how
                 these keys are used.
         """
-        indicies = self.backend.append_rows(rows)
+        if self.backend is None:
+            self.backend = create_backend(list(rows))
+            indicies = list(range(self.row_count))
+        else:
+            indicies = self.backend.append_rows(rows)
         self._require_update_dimensions = True
         self.cursor_coordinate = self.cursor_coordinate
 
@@ -1298,7 +1348,8 @@ class DataTable(ScrollView, can_focus=True):
         Raises:
             RowDoesNotExist: If the row key does not exist.
         """
-
+        if self.backend is None:
+            raise RowDoesNotExist("No data in the table")
         self.backend.drop_row(row_index)
 
         self.cursor_coordinate = self.cursor_coordinate
@@ -1442,7 +1493,7 @@ class DataTable(ScrollView, can_focus=True):
         Returns:
             True if the row index is within the bounds of the table.
         """
-        return 0 <= row_index < self.backend.row_count
+        return 0 <= row_index < self.row_count
 
     def is_valid_column_index(self, column_index: int) -> bool:
         """Return a boolean indicating whether the column_index is within table bounds.
@@ -1453,7 +1504,7 @@ class DataTable(ScrollView, can_focus=True):
         Returns:
             True if the column index is within the bounds of the table.
         """
-        return 0 <= column_index < self.backend.column_count
+        return 0 <= column_index < self.column_count
 
     def is_valid_coordinate(self, coordinate: Coordinate) -> bool:
         """Return a boolean indicating whether the given coordinate is valid.
@@ -1472,11 +1523,33 @@ class DataTable(ScrollView, can_focus=True):
     @property
     def ordered_columns(self) -> list[Column]:
         """The list of Columns in the DataTable, ordered as they appear on screen."""
+        if self._column_labels is not None:
+            labels = self._column_labels
+        elif self.backend is not None:
+            labels = list(self.backend.columns)
+        else:
+            labels = []
+
+        if self._column_widths is not None:
+            widths = self._column_widths
+        else:
+            widths = [0] * len(labels)
+
+        if self.backend is not None:
+            column_content_widths = self.backend.column_content_widths
+        else:
+            column_content_widths = [0] * len(labels)
+
         if self._ordered_columns is None:
             self._ordered_columns = [
-                Column(label=Text(label), content_width=content_width, auto_width=True)
-                for label, content_width in zip(
-                    self.backend.columns, self.backend.column_content_widths
+                Column(
+                    label=Text.from_markup(label) if isinstance(label, str) else label,
+                    width=width if width is not None else 0,
+                    content_width=content_width,
+                    auto_width=True if width is None or width == 0 else False,
+                )
+                for label, width, content_width in zip(
+                    labels, widths, column_content_widths
                 )
             ]
         return self._ordered_columns
@@ -1530,7 +1603,7 @@ class DataTable(ScrollView, can_focus=True):
 
         formatted_row_cells = [
             Text() if datum is None else default_cell_formatter(datum) or empty
-            for datum, _ in zip_longest(ordered_row, range(self.backend.column_count))
+            for datum, _ in zip_longest(ordered_row, range(self.column_count))
         ]
         label = None
         if self._should_render_row_labels:
@@ -2022,7 +2095,8 @@ class DataTable(ScrollView, can_focus=True):
         Returns:
             The `DataTable` instance.
         """
-
+        if self.backend is None:
+            return self
         self.backend.sort(by=by)
         self._update_count += 1
         self.refresh()
@@ -2203,7 +2277,7 @@ class DataTable(ScrollView, can_focus=True):
         """Post the appropriate message for a selection based on the `cursor_type`."""
         cursor_coordinate = self.cursor_coordinate
         cursor_type = self.cursor_type
-        if self.backend.row_count == 0:
+        if self.row_count == 0:
             return
         if cursor_type == "cell":
             self.post_message(
