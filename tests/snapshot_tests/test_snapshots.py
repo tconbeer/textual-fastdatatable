@@ -76,6 +76,10 @@ def test_datatable_empty(snap_compare) -> None:
     assert snap_compare(SNAPSHOT_APPS_DIR / "empty.py")
 
 
+def test_datatable_empty_add_col(snap_compare) -> None:
+    assert snap_compare(SNAPSHOT_APPS_DIR / "empty_add_col.py")
+
+
 def test_datatable_no_rows(snap_compare) -> None:
     assert snap_compare(SNAPSHOT_APPS_DIR / "no_rows.py")
 

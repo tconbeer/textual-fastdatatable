@@ -1255,6 +1255,10 @@ class DataTable(ScrollView, can_focus=True):
         # Update backend to account for the new column.
         if self.backend is not None:
             column_index = self.backend.append_column(str(label), default=default)
+        elif self._column_labels is not None:
+            column_index = len(self._column_labels)
+        else:
+            column_index = 0
 
         self._require_update_dimensions = True
         self.check_idle()
@@ -1319,7 +1323,9 @@ class DataTable(ScrollView, can_focus=True):
                 these keys are used.
         """
         if self.backend is None:
-            self.backend = create_backend(list(rows))
+            self.backend = create_backend(
+                [[str(col.label) for col in self.ordered_columns], *rows]
+            )
             indicies = list(range(self.row_count))
         else:
             indicies = self.backend.append_rows(rows)
