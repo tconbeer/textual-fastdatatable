@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+-   Fixes a crash when creating a column from a null or complex type.
+
 ## [0.1.2] - 2023-10-02
 
 ## [0.1.1] - 2023-09-29

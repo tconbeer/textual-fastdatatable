@@ -6,6 +6,7 @@ from typing import Any, Dict, Iterable, Literal, Mapping, Sequence, Union
 
 import pyarrow as pa
 import pyarrow.compute as pc
+import pyarrow.lib as pl
 import pyarrow.parquet as pq
 
 AutoBackendType = Union[
@@ -171,18 +172,16 @@ class ArrowBackend(DataTableBackend):
         if not self._column_content_widths:
             if self._string_data is None:
                 self._string_data = pa.Table.from_arrays(
-                    arrays=[arr.cast(pa.string()) for arr in self.data.columns],
+                    arrays=[
+                        self._safe_cast_arr_to_str(arr) for arr in self.data.columns
+                    ],
                     names=self.data.column_names,
                 )
             self._column_content_widths = [
-                pc.max(pc.utf8_length(arr)).as_py()
+                pc.max(pc.utf8_length(arr).fill_null(0)).as_py()
                 for arr in self._string_data.itercolumns()
             ]
         return self._column_content_widths
-
-    def _reset_content_widths(self) -> None:
-        self._string_data = None
-        self._column_content_widths = []
 
     def get_row_at(self, index: int) -> Sequence[Any]:
         row: Dict[str, Any] = self.data.slice(index, length=1).to_pylist()[0]
@@ -267,3 +266,24 @@ class ArrowBackend(DataTableBackend):
             indicated.
         """
         self.data = self.data.sort_by(by)
+
+    def _reset_content_widths(self) -> None:
+        self._string_data = None
+        self._column_content_widths = []
+
+    @staticmethod
+    def _safe_cast_arr_to_str(arr: pa._PandasConvertible) -> pa._PandasConvertible:
+        """
+        Safe here means avoiding type errors casting to str; ironically that means
+        setting PyArrow safe=false. If PyArrow can't do the cast (as with structs
+        and other nested types), we fall back to Python.
+        """
+        try:
+            return arr.cast(
+                pa.string(),
+                safe=False,
+            )
+        except pl.ArrowNotImplementedError:
+            # todo: vectorize this with a pyarrow udf
+            native_list = arr.to_pylist()
+            return pa.array([str(i) for i in native_list], type=pa.string())

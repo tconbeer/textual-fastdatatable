@@ -508,7 +508,6 @@ class DataTable(ScrollView, can_focus=True):
         disabled: bool = False,
     ) -> None:
         super().__init__(name=name, id=id, classes=classes, disabled=disabled)
-        # TODO: HANDLE EMPTY CASE
         try:
             self.backend: DataTableBackend | None = (
                 backend if backend is not None else create_backend(data)  # type: ignore
