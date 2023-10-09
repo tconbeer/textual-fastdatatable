@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.1.3] - 2023-10-09
+
 -   Fixes a crash when creating a column from a null or complex type.
 
 ## [0.1.2] - 2023-10-02
@@ -16,7 +18,9 @@ All notable changes to this project will be documented in this file.
 
 -   Initial release. Adds DataTable and ArrowBackend, which is 1000x faster for datasets of 500k records or more.
 
-[Unreleased]: https://github.com/tconbeer/textual-fastdatatable/compare/0.1.2...HEAD
+[Unreleased]: https://github.com/tconbeer/textual-fastdatatable/compare/0.1.3...HEAD
+
+[0.1.3]: https://github.com/tconbeer/textual-fastdatatable/compare/0.1.2...0.1.3
 
 [0.1.2]: https://github.com/tconbeer/textual-fastdatatable/compare/0.1.1...0.1.2
 
