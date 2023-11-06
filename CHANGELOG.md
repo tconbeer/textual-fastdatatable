@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+-   Fixes a crash when computing the widths of columns with no rows ([#19](https://github.com/tconbeer/textual-fastdatatable/issues/19)).
+
 ## [0.1.3] - 2023-10-09
 
 -   Fixes a crash when creating a column from a null or complex type.

@@ -45,6 +45,7 @@ target-version = "py38"
 python_version = "3.8"
 files = [
     "src/**/*.py",
+    "tests/unit_tests/**/*.py"
 ]
 mypy_path = "src:stubs"
 

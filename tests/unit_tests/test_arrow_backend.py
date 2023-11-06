@@ -157,3 +157,9 @@ def test_sort(backend: ArrowBackend) -> None:
 
     backend.sort(by=[("first column", "ascending")])
     assert backend.data.equals(original_table)
+
+
+def test_empty_query() -> None:
+    data: dict[str, list] = {"a": []}
+    backend = ArrowBackend.from_pydict(data)
+    assert backend.column_content_widths == [0]

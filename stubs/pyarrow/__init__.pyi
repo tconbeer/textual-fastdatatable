@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Iterable, Iterator, Literal, Mapping, Type, TypeVar
+from typing import Any, Iterable, Iterator, Literal, Mapping, Sequence, Type, TypeVar
 
 from .compute import CastOptions
 from .types import DataType as DataType
@@ -69,19 +69,21 @@ class _Tabular:
         self: T, field_: str | Field, column: Array | ChunkedArray
     ) -> T: ...
     def column(self, i: int | str) -> _PandasConvertible: ...
+    def equals(self: T, other: T, check_metadata: bool = False) -> bool: ...
     def itercolumns(self) -> Iterator[_PandasConvertible]: ...
+    def select(self: T, columns: Sequence[str | int]) -> T: ...
     def set_column(
         self: T, i: int, field_: str | Field, column: Array | ChunkedArray
-    ) -> T: ...
-    def sort_by(
-        self: T,
-        sorting: str | list[tuple[str, Literal["ascending", "descending"]]],
-        **kwargs: Any,
     ) -> T: ...
     def slice(  # noqa: A003
         self: T,
         offset: int = 0,
         length: int | None = None,
+    ) -> T: ...
+    def sort_by(
+        self: T,
+        sorting: str | list[tuple[str, Literal["ascending", "descending"]]],
+        **kwargs: Any,
     ) -> T: ...
     def to_pylist(self) -> list[dict[str, Any]]: ...
 
