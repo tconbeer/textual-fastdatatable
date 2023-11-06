@@ -177,10 +177,14 @@ class ArrowBackend(DataTableBackend):
                     ],
                     names=self.data.column_names,
                 )
-            self._column_content_widths = [
+            content_widths = [
                 pc.max(pc.utf8_length(arr).fill_null(0)).as_py()
                 for arr in self._string_data.itercolumns()
             ]
+            # pc.max returns None for each column without rows; we need to return 0
+            # instead.
+            self._column_content_widths = [cw or 0 for cw in content_widths]
+
         return self._column_content_widths
 
     def get_row_at(self, index: int) -> Sequence[Any]:
@@ -279,11 +283,12 @@ class ArrowBackend(DataTableBackend):
         and other nested types), we fall back to Python.
         """
         try:
-            return arr.cast(
+            arr = arr.cast(
                 pa.string(),
                 safe=False,
             )
         except pl.ArrowNotImplementedError:
             # todo: vectorize this with a pyarrow udf
             native_list = arr.to_pylist()
-            return pa.array([str(i) for i in native_list], type=pa.string())
+            arr = pa.array([str(i) for i in native_list], type=pa.string())
+        return arr.fill_null("")
