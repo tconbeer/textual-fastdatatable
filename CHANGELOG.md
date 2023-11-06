@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.1.4] - 2023-11-06
+
 -   Fixes a crash when computing the widths of columns with no rows ([#19](https://github.com/tconbeer/textual-fastdatatable/issues/19)).
 
 ## [0.1.3] - 2023-10-09
@@ -20,7 +22,9 @@ All notable changes to this project will be documented in this file.
 
 -   Initial release. Adds DataTable and ArrowBackend, which is 1000x faster for datasets of 500k records or more.
 
-[Unreleased]: https://github.com/tconbeer/textual-fastdatatable/compare/0.1.3...HEAD
+[Unreleased]: https://github.com/tconbeer/textual-fastdatatable/compare/0.1.4...HEAD
+
+[0.1.4]: https://github.com/tconbeer/textual-fastdatatable/compare/0.1.3...0.1.4
 
 [0.1.3]: https://github.com/tconbeer/textual-fastdatatable/compare/0.1.2...0.1.3
 
