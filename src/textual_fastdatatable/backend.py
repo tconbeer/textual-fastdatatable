@@ -27,7 +27,7 @@ def create_backend(data: AutoBackendType) -> DataTableBackend:
     elif isinstance(data, Path) or isinstance(data, str):
         return ArrowBackend.from_parquet(data)
     elif isinstance(data, Sequence) and isinstance(data[0], Iterable):
-        return ArrowBackend.from_records(data)
+        return NativeBackend(data)
     elif (
         isinstance(data, Mapping)
         and isinstance(next(iter(data.keys())), str)
@@ -85,7 +85,7 @@ class DataTableBackend(ABC):
         pass
 
     @abstractmethod
-    def append_column(self, label: str, default: Any) -> int:
+    def append_column(self, label: str, default: Any | None = None) -> int:
         """
         Returns column index
         """
@@ -292,3 +292,117 @@ class ArrowBackend(DataTableBackend):
             native_list = arr.to_pylist()
             arr = pa.array([str(i) for i in native_list], type=pa.string())
         return arr.fill_null("")
+
+
+class NativeBackend(DataTableBackend):
+    def __init__(self, data: Sequence[Iterable[Any]]) -> None:
+        if not data:
+            self._columns: Sequence[str] = []
+            self.data: Sequence[Sequence[Any]] = []
+        elif hasattr(data[0], "__getitem__") and hasattr(data[1], "__getitem__"):
+            self._columns = [str(col) for col in data[0]]
+            self.data = data[1:]  # type: ignore
+        else:
+            self._columns = [str(col) for col in data[0]]
+            self.data = [tuple(row) for row in data[1:]]
+
+    @property
+    def row_count(self) -> int:
+        return len(self.data)
+
+    @property
+    def column_count(self) -> int:
+        return len(self.columns)
+
+    @property
+    def columns(self) -> Sequence[str]:
+        """
+        A list of column labels
+        """
+        return self._columns
+
+    @property
+    def column_content_widths(self) -> Sequence[int]:
+        """
+        A list of integers corresponding to the widest utf8 string length
+        of any data in each column.
+        """
+        return [
+            max((len(str(row[i])) for row in self.data))
+            for i in range(len(self.columns))
+        ]
+
+    def get_row_at(self, index: int) -> Sequence[Any]:
+        return self.data[index]
+
+    def get_column_at(self, index: int) -> Sequence[Any]:
+        return [row[index] for row in self.data]
+
+    def get_cell_at(self, row_index: int, column_index: int) -> Any:
+        return self.data[row_index][column_index]
+
+    def append_column(self, label: str, default: Any | None = None) -> int:
+        """
+        Returns column index
+        """
+        new_idx = len(self.columns)
+        if hasattr(self._columns, "append"):
+            self._columns.append(label)
+        else:
+            self._columns = list(self._columns)
+            self._columns.append(label)
+        self.data = [(*row, default) for row in self.data]
+        return new_idx
+
+    def append_rows(self, records: Iterable[Iterable[Any]]) -> list[int]:
+        """
+        Returns new row indicies
+        """
+        old_len = len(self.data)
+        if not hasattr(self.data, "append"):
+            self.data = list(self.data)
+        for row in records:
+            self.data.append(tuple(row))
+        new_len = len(self.data)
+        return list(range(old_len, new_len))
+
+    def drop_row(self, row_index: int) -> None:
+        if hasattr(self.data, "__delitem__"):
+            del self.data[row_index]
+        else:
+            self.data = [*self.data[:row_index], *self.data[row_index:]]
+
+    def update_cell(self, row_index: int, column_index: int, value: Any) -> None:
+        """
+        Raises IndexError if bad indicies
+        """
+        try:
+            self.data[row_index][column_index] = value  # type: ignore
+        except TypeError:
+            row = self.data[row_index]
+            new_row = (*row[:column_index], value, *row[column_index + 1 :])
+            try:
+                self.data[row_index] = new_row  # type: ignore
+            except TypeError:
+                self.data = [
+                    *self.data[:row_index],
+                    new_row,
+                    *self.data[row_index + 1 :],
+                ]
+
+    def sort(
+        self, by: list[tuple[str, Literal["ascending", "descending"]]] | str
+    ) -> None:
+        """
+        by: str sorts table by the data in the column with that name (asc).
+        by: list[tuple] sorts the table by the named column(s) with the directions
+            indicated.
+        """
+        if isinstance(by, str):
+            by = [(by, "ascending")]
+        for col_name, dir in reversed(by):
+            self.data = sorted(
+                self.data,
+                key=lambda x: x[self.columns.index(col_name)],
+                reverse=dir == "descending",
+            )

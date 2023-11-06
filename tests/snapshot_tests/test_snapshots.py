@@ -44,7 +44,7 @@ def test_datatable_labels_and_fixed_data(snap_compare) -> None:
 # skip, don't xfail; see: https://github.com/Textualize/pytest-textual-snapshot/issues/6
 @pytest.mark.skip(
     reason=(
-        "The data in this test includes formatting chars; the backend doesn't"
+        "The data in this test includes markup; the backend doesn't"
         "know these have zero width, so we draw the column wider than we used to"
     )
 )
