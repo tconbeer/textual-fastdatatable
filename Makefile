@@ -14,3 +14,7 @@ lint:
 .PHONY: serve
 serve:
 	textual run --dev -c python -m textual_fastdatatable
+
+.PHONY: profile
+profile:
+	pyinstrument -r html -o profile.html "src/scripts/run.py"

@@ -85,7 +85,7 @@ class DataTableBackend(ABC):
         pass
 
     @abstractmethod
-    def append_column(self, label: str, default: Any) -> int:
+    def append_column(self, label: str, default: Any | None = None) -> int:
         """
         Returns column index
         """

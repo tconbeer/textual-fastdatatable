@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Features
+
+-   Adds a `null_rep: str` argument when initializing the data table; this string will be used to replace missing data.
+
+### Performance
+
+-   Drastically improves performance for tables that are much wider than the viewport ([#12](https://github.com/tconbeer/textual-fastdatatable/issues/12)). 
+
+### Benchmarks
+
+-   Improves benchmarks to exclude data load times and include more information about first paint and scroll performance.
+
 ## [0.1.4] - 2023-11-06
 
 -   Fixes a crash when computing the widths of columns with no rows ([#19](https://github.com/tconbeer/textual-fastdatatable/issues/19)).

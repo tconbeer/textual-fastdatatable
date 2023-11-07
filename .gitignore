@@ -1,5 +1,7 @@
 .vscode
 snapshot_report.html
+profile*.html
+results.md
 Pipfile
 .python-version
 
