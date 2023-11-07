@@ -74,7 +74,18 @@ LineCacheKey = Tuple[
     PseudoClasses,
 ]
 RowCacheKey = Tuple[
-    int, int, Style, Coordinate, Coordinate, CursorType, bool, bool, int, PseudoClasses
+    int,
+    int,
+    int,
+    int,
+    Style,
+    Coordinate,
+    Coordinate,
+    CursorType,
+    bool,
+    bool,
+    int,
+    PseudoClasses,
 ]
 CellType = RenderableType
 
@@ -506,6 +517,7 @@ class DataTable(ScrollView, can_focus=True):
         id: str | None = None,  # noqa: A002
         classes: str | None = None,
         disabled: bool = False,
+        null_rep: str = "",
     ) -> None:
         super().__init__(name=name, id=id, classes=classes, disabled=disabled)
         try:
@@ -593,6 +605,8 @@ class DataTable(ScrollView, can_focus=True):
         background color."""
         self.cursor_type = cursor_type
         """The type of cursor of the `DataTable`."""
+        self.null_rep = null_rep
+        """The string used to represent missing data (None or null)"""
 
     @property
     def hover_row(self) -> int:
@@ -1604,10 +1618,10 @@ class DataTable(ScrollView, can_focus=True):
             return RowRenderables(None, header_row)
 
         ordered_row = self.get_row_at(row_index)
-        empty = Text()
+        empty = Text(self.null_rep)
 
         formatted_row_cells = [
-            Text() if datum is None else default_cell_formatter(datum) or empty
+            empty if datum is None else default_cell_formatter(datum)
             for datum, _ in zip_longest(ordered_row, range(self.column_count))
         ]
         label = None
@@ -1620,6 +1634,28 @@ class DataTable(ScrollView, can_focus=True):
             #     else None
             # )
         return RowRenderables(label, formatted_row_cells)
+
+    def _get_cell_renderable(
+        self, row_index: int, column_index: int
+    ) -> RenderableType | Text:
+        """Get renderables for the cell currently at the given row index,
+        column index tuple. The renderable
+        returned here has already been passed through the default_cell_formatter.
+
+        Args:
+            row_index: Index of the row.
+            column_index: Index of the column.
+
+        Returns:
+            A RenderableType (or Text) containing the the rendered cell.
+        """
+        if row_index == -1:
+            return self.ordered_columns[column_index].label
+
+        datum = self.get_cell_at(Coordinate(row=row_index, column=column_index))
+        if datum is None:
+            datum = Text(self.null_rep)
+        return default_cell_formatter(datum)
 
     def _render_cell(
         self,
@@ -1665,12 +1701,14 @@ class DataTable(ScrollView, can_focus=True):
 
         if cell_cache_key not in self._cell_render_cache:
             base_style += Style.from_meta({"row": row_index, "column": column_index})
-            row_label, row_cells = self._get_row_renderables(row_index)
 
             if is_row_label_cell:
+                row_label, _ = self._get_row_renderables(row_index)
                 cell = row_label if row_label is not None else ""
             else:
-                cell = row_cells[column_index]
+                cell = self._get_cell_renderable(
+                    row_index=row_index, column_index=column_index
+                )
 
             component_style, post_style = self._get_styles_to_render_cell(
                 is_header_cell,
@@ -1773,29 +1811,58 @@ class DataTable(ScrollView, can_focus=True):
         self,
         row_index: int,
         line_no: int,
+        x1: int,
+        x2: int,
         base_style: Style,
         cursor_location: Coordinate,
         hover_location: Coordinate,
-    ) -> tuple[SegmentLines, SegmentLines]:
+    ) -> tuple[SegmentLines, SegmentLines, int]:
         """Render a single line from a row in the DataTable.
 
         Args:
             row_key: The identifying key for this row.
             line_no: Line number (y-coordinate) within row. 0 is the first strip of
                 cells in the row, line_no=1 is the next line in the row, and so on...
+            x1: X start crop.
+            x2: X end crop (exclusive).
             base_style: Base style of row.
             cursor_location: The location of the cursor in the DataTable.
             hover_location: The location of the hover cursor in the DataTable.
 
         Returns:
-            Lines for fixed cells, and Lines for scrollable cells.
+            Lines for fixed cells, and Lines for scrollable cells, and the x-offset
+            for the first cell in scrollable cells.
         """
         cursor_type = self.cursor_type
         show_cursor = self.show_cursor
 
+        # determine which columns are visible (col2 inclusive)
+        fixed_width = sum(
+            [col.render_width for col in self.ordered_columns[: self.fixed_columns]]
+        )
+        col_widths = [
+            col.render_width for col in self.ordered_columns[self.fixed_columns :]
+        ]
+        cumulative_width = fixed_width
+        col1 = self.fixed_columns
+        offset = x1 - cumulative_width
+        col2 = None
+        for i, w in enumerate(col_widths, start=self.fixed_columns):
+            if cumulative_width <= x1:
+                col1 = i
+                offset = x1 - cumulative_width
+            if col2 is None and cumulative_width + w >= x2:
+                col2 = i
+                break
+            cumulative_width += w
+        else:
+            col2 = len(self.ordered_columns) - 1
+
         cache_key = (
             row_index,
             line_no,
+            col1,
+            col2,
             base_style,
             cursor_location,
             hover_location,
@@ -1807,7 +1874,8 @@ class DataTable(ScrollView, can_focus=True):
         )
 
         if cache_key in self._row_render_cache:
-            return self._row_render_cache[cache_key]
+            cache_contents = self._row_render_cache[cache_key]
+            return cache_contents[0], cache_contents[1], offset
 
         should_highlight = self._should_highlight
         render_cell = self._render_cell
@@ -1833,7 +1901,6 @@ class DataTable(ScrollView, can_focus=True):
             fixed_row.append(label_cell_lines)
 
         if self.fixed_columns:
-            # TODO: off by one?
             if row_index == self._header_row_index:
                 fixed_style = header_style  # We use the header style either way.
             else:
@@ -1858,7 +1925,8 @@ class DataTable(ScrollView, can_focus=True):
         row_style = self._get_row_style(row_index, base_style)
 
         scrollable_row = []
-        for column_index, column in enumerate(self.ordered_columns):
+        visible_columns = self.ordered_columns[col1 : col2 + 1]
+        for column_index, column in enumerate(visible_columns, start=col1):
             cell_location = Coordinate(row_index, column_index)
             cell_lines = render_cell(
                 row_index,
@@ -1873,11 +1941,7 @@ class DataTable(ScrollView, can_focus=True):
         # Extending the styling out horizontally to fill the container
         widget_width = self.size.width
         table_width = (
-            sum(
-                column.render_width
-                for column in self.ordered_columns[self.fixed_columns :]
-            )
-            + self._row_label_column_width
+            sum(col_widths[self.fixed_columns :]) + self._row_label_column_width
         )
         remaining_space = max(0, widget_width - table_width)
         background_color = self.background_colors[1]
@@ -1889,9 +1953,8 @@ class DataTable(ScrollView, can_focus=True):
         )
         scrollable_row.append([Segment(" " * remaining_space, faded_style)])
 
-        row_pair = (fixed_row, scrollable_row)
-        self._row_render_cache[cache_key] = row_pair
-        return row_pair
+        self._row_render_cache[cache_key] = (fixed_row, scrollable_row)
+        return (fixed_row, scrollable_row, offset)
 
     def _get_offsets(self, y: int) -> tuple[int, int]:
         """Get row key and line offset for a given line.
@@ -1955,21 +2018,20 @@ class DataTable(ScrollView, can_focus=True):
         if cache_key in self._line_cache:
             return self._line_cache[cache_key]
 
-        fixed, scrollable = self._render_line_in_row(
+        fixed, scrollable, xoffset = self._render_line_in_row(
             row_index,
             0,
+            x1,
+            x2,
             base_style,
             cursor_location=self.cursor_coordinate,
             hover_location=self.hover_coordinate,
-        )
-        fixed_width = sum(
-            column.render_width for column in self.ordered_columns[: self.fixed_columns]
         )
 
         fixed_line: list[Segment] = list(chain.from_iterable(fixed)) if fixed else []
         scrollable_line: list[Segment] = list(chain.from_iterable(scrollable))
 
-        segments = fixed_line + line_crop(scrollable_line, x1 + fixed_width, x2, width)
+        segments = fixed_line + line_crop(scrollable_line, xoffset, x2, width)
         strip = Strip(segments).adjust_cell_length(width, base_style).simplify()
 
         self._line_cache[cache_key] = strip
