@@ -5,12 +5,14 @@ from pathlib import Path
 from textual.app import App, ComposeResult
 from textual.driver import Driver
 from textual.types import CSSPathType
-from textual_fastdatatable import DataTable as FastDataTable
+from textual_fastdatatable import DataTable
 
 BENCHMARK_DATA = Path(__file__).parent.parent.parent / "tests" / "data"
 
 
 class ArrowBackendApp(App):
+    TITLE = "FastDataTable (Arrow)"
+
     def __init__(
         self,
         data_path: Path,
@@ -22,7 +24,7 @@ class ArrowBackendApp(App):
         self.data_path = data_path
 
     def compose(self) -> ComposeResult:
-        yield FastDataTable(data=self.data_path)
+        yield DataTable(data=self.data_path)
 
 
 if __name__ == "__main__":

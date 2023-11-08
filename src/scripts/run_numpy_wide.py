@@ -31,8 +31,6 @@ class NumpyApp(App):
         table = DataTable(
             backend=backend, column_labels=[str(col) for col in df.columns]
         )
-        del df
-        del rows
         yield table
 
 

@@ -9,7 +9,12 @@ import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.lib as pl
 import pyarrow.parquet as pq
-from numpy.core.records import array, fromrecords
+from numpy.core.records import (
+    array as np_recarray,
+)
+from numpy.core.records import (
+    fromrecords as np_recarray_fromrecords,
+)
 from numpy.lib.recfunctions import rec_append_fields
 
 AutoBackendType = Union[
@@ -300,7 +305,7 @@ class ArrowBackend(DataTableBackend):
 class NumpyBackend(DataTableBackend):
     def __init__(self, data: Sequence[tuple]) -> None:
         if data:
-            self.data = fromrecords(data)
+            self.data = np_recarray_fromrecords(data)
             self._column_content_widths: list[int] = []
         else:
             self.data = np.recarray(shape=(0, 0), formats=["f8"])
@@ -333,7 +338,7 @@ class NumpyBackend(DataTableBackend):
         """
         if not self._column_content_widths:
             self._column_content_widths = [
-                max(np.char.str_len(self.data[col].astype("<U255")), default=0)
+                int(max(np.char.str_len(self.data[col].astype("<U255")), default=0))
                 for col in self.columns
             ]
         return self._column_content_widths
@@ -369,13 +374,13 @@ class NumpyBackend(DataTableBackend):
         """
         tuples = [tuple(row) for row in records]
         old_len = self.row_count
-        new_data = fromrecords(tuples)
-        self.data = array(np.append(self.data, new_data, axis=0))
+        new_data = np_recarray_fromrecords(tuples)
+        self.data = np_recarray(np.append(self.data, new_data, axis=0))
         self._column_content_widths = []
         return list(range(old_len, self.row_count))
 
     def drop_row(self, row_index: int) -> None:
-        self.data = array(np.delete(self.data, row_index, axis=0))
+        self.data = np_recarray(np.delete(self.data, row_index, axis=0))
         self._column_content_widths = []
 
     def update_cell(self, row_index: int, column_index: int, value: Any) -> None:
@@ -391,7 +396,7 @@ class NumpyBackend(DataTableBackend):
             types[column_index] = (types[column_index][0], "<U255")
             new_array = self.data.astype(types)
             new_array[row_index][column_index] = value
-            self.data = array(new_array)
+            self.data = np_recarray(new_array)
         self._column_content_widths = []
 
     def sort(
@@ -408,4 +413,4 @@ class NumpyBackend(DataTableBackend):
             for field, direction in reversed(by):
                 self.data.sort(axis=0, kind="stable", order=field)
                 if direction == "descending":
-                    self.data = array(np.flip(self.data))
+                    self.data = np_recarray(np.flip(self.data))
