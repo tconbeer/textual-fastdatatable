@@ -5,21 +5,23 @@ Textual's built-in DataTable widget is beautiful and powerful, but it can be slo
 
 Here are some benchmarks on my relatively weak laptop. For each benchmark, we initialize a Textual App that
 loads a dataset from a parquet file and mounts a data table; it then scrolls around the table
-(10 pagedowns and 15 right arrows). For the built-in table, the data is loaded into memory before the timer
-is started; the Arrow back-end reads directly from parquet, so the timer is started immediately.
+(10 pagedowns and 15 right arrows). 
+
+For the built-in table and the others marked "from Records", the data is loaded into memory before the timer
+is started; for the "Arrow from Parquet" back-end, the timer is started immediately.
 
 The times in each column represent the time to the first paint of the table, and the time after scrolling
 is completed (we wait until the table is fully rendered after each scroll):
 
-Records |Built-In DataTable | FastDataTable (Arrow)
---------|--------|--------
-lap_times_100.parquet |   0.024s /   1.741s |   0.020s /   1.751s
-lap_times_1000.parquet |   0.107s /   1.997s |   0.022s /   1.913s
-lap_times_10000.parquet |   1.071s /   3.016s |   0.022s /   1.956s
-lap_times_100000.parquet |  10.803s /  13.086s |   0.038s /   2.162s
-lap_times_538121.parquet |  60.795s /  64.837s |   0.085s /   1.928s
-wide_10000.parquet |   4.655s /   9.987s |   0.025s /   3.205s
-wide_100000.parquet |  49.764s /  55.258s |   0.062s /   3.209s
+Records | Built-In DataTable | FastDataTable (Arrow from Parquet) | FastDataTable (Arrow from Records) | FastDataTable (Numpy from Records) 
+--------|--------|--------|--------|--------
+lap_times_100.parquet |   0.019s /   1.716s |   0.012s /   1.724s |    0.011s /   1.700s |   0.011s /   1.688s
+lap_times_1000.parquet |   0.103s /   1.931s |   0.011s /   1.859s |    0.011s /   1.799s |   0.015s /   1.848s
+lap_times_10000.parquet |   0.977s /   2.824s |   0.013s /   1.834s |    0.016s /   1.812s |   0.078s /   1.869s
+lap_times_100000.parquet |  11.773s /  13.770s |   0.025s /   1.790s |    0.156s /   1.824s |   0.567s /   2.347s
+lap_times_538121.parquet |  62.960s /  65.760s |   0.077s /   1.803s |    0.379s /   2.234s |   3.324s /   5.031s
+wide_10000.parquet |   5.110s /  10.539s |   0.024s /   3.373s |    0.042s /   3.278s |   0.369s /   3.461s
+wide_100000.parquet |  51.144s /  56.604s |   0.054s /   3.294s |    0.429s /   3.642s |   3.628s /   6.732s
 
 
 **NB:** FastDataTable currently does not support rows with a height of more than one line. See below for

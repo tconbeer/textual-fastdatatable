@@ -6,7 +6,7 @@ import pandas as pd
 from textual.app import App, ComposeResult
 from textual.driver import Driver
 from textual.types import CSSPathType
-from textual.widgets import DataTable as BuiltinDataTable
+from textual.widgets import DataTable
 
 BENCHMARK_DATA = Path(__file__).parent.parent.parent / "tests" / "data"
 
@@ -27,7 +27,7 @@ class BuiltinApp(App):
     def compose(self) -> ComposeResult:
         df = pd.read_parquet(self.data_path)
         rows = [tuple(row) for row in df.itertuples(index=False)]
-        table: BuiltinDataTable = BuiltinDataTable()
+        table: DataTable = DataTable()
         table.add_columns(*[str(col) for col in df.columns])
         for row in rows:
             table.add_row(*row, height=1, label=None)

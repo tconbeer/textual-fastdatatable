@@ -7,6 +7,11 @@ All notable changes to this project will be documented in this file.
 ### Features
 
 -   Adds a `null_rep: str` argument when initializing the data table; this string will be used to replace missing data.
+-   Adds a `NumpyBackend` that uses Numpy Record Arrays; this backend is marginally slower than the `ArrowBackend` in most scenarios ([#23](https://github.com/tconbeer/textual-fastdatatable/issues/23)).
+
+### Bug Fixes
+
+-   Fixes a crash when using `ArrowBackend.from_records(has_header=False)`.
 
 ### Performance
 
@@ -14,7 +19,7 @@ All notable changes to this project will be documented in this file.
 
 ### Benchmarks
 
--   Improves benchmarks to exclude data load times and include more information about first paint and scroll performance.
+-   Improves benchmarks to exclude data load times, disable garbage collection, and include more information about first paint and scroll performance.
 
 ## [0.1.4] - 2023-11-06
 

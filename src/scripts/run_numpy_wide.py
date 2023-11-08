@@ -2,16 +2,17 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pandas as pd
 from textual.app import App, ComposeResult
 from textual.driver import Driver
 from textual.types import CSSPathType
-from textual_fastdatatable import DataTable
+from textual_fastdatatable import DataTable, NumpyBackend
 
 BENCHMARK_DATA = Path(__file__).parent.parent.parent / "tests" / "data"
 
 
-class ArrowBackendApp(App):
-    TITLE = "FastDataTable (Arrow)"
+class NumpyApp(App):
+    TITLE = "FastDataTable (Numpy)"
 
     def __init__(
         self,
@@ -24,9 +25,15 @@ class ArrowBackendApp(App):
         self.data_path = data_path
 
     def compose(self) -> ComposeResult:
-        yield DataTable(data=self.data_path)
+        df = pd.read_parquet(self.data_path)
+        rows = [tuple(row) for row in df.itertuples(index=False)]
+        backend = NumpyBackend(rows)
+        table = DataTable(
+            backend=backend, column_labels=[str(col) for col in df.columns]
+        )
+        yield table
 
 
 if __name__ == "__main__":
-    app = ArrowBackendApp(data_path=BENCHMARK_DATA / "wide_100000.parquet")
+    app = NumpyApp(data_path=BENCHMARK_DATA / "wide_10000.parquet")
     app.run()
