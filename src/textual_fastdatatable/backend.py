@@ -136,7 +136,11 @@ class ArrowBackend(DataTableBackend):
     def _pydict_from_records(
         records: Sequence[Iterable[Any]], has_header: bool = True
     ) -> dict[str, list[Any]]:
-        headers = records[0] if has_header else range(len(list(records[0])))
+        headers = (
+            records[0]
+            if has_header
+            else [f"f{i}" for i in range(len(list(records[0])))]
+        )
         data = list(map(list, records[1:] if has_header else records))
         pydict = {header: [row[i] for row in data] for i, header in enumerate(headers)}
         return pydict
