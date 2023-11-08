@@ -16,7 +16,7 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry.dependencies]
 python = "^3.8"
-textual = ">=0.38.0"
+textual = ">=0.41.0"
 pyarrow = ">=7.0.0"
 
 [tool.poetry.group.dev.dependencies]
