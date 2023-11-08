@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import gc
 from pathlib import Path
 from time import perf_counter
 
@@ -89,9 +90,12 @@ if __name__ == "__main__":
             for i, app_cls in enumerate(app_defs):
                 for _ in range(tries):
                     app = app_cls(BENCHMARK_DATA / p)
+                    gc.disable()
                     fp, el = app.run(headless=True, auto_pilot=scroller)  # type: ignore
+                    gc.collect()
                     first_paint[i].append(fp)
                     elapsed[i].append(el)
+            gc.enable()
             avg_first_paint = [sum(app_times) / tries for app_times in first_paint]
             avg_elapsed = [sum(app_times) / tries for app_times in elapsed]
             formatted = [
