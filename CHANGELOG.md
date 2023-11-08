@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.2.0] - 2023-11-08
+
 ### Features
 
 -   Adds a `null_rep: str` argument when initializing the data table; this string will be used to replace missing data.
@@ -39,7 +41,9 @@ All notable changes to this project will be documented in this file.
 
 -   Initial release. Adds DataTable and ArrowBackend, which is 1000x faster for datasets of 500k records or more.
 
-[Unreleased]: https://github.com/tconbeer/textual-fastdatatable/compare/0.1.4...HEAD
+[Unreleased]: https://github.com/tconbeer/textual-fastdatatable/compare/0.2.0...HEAD
+
+[0.2.0]: https://github.com/tconbeer/textual-fastdatatable/compare/0.1.4...0.2.0
 
 [0.1.4]: https://github.com/tconbeer/textual-fastdatatable/compare/0.1.3...0.1.4
 
