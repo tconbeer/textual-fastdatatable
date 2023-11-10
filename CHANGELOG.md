@@ -4,10 +4,11 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.2.1] - 2023-11-10
+
 ### Bug Fixes
 
 -   Tables with the ArrowBackend no longer display incorrect output when column labels are duplicated ([#26](https://github.com/tconbeer/textual-fastdatatable/issues/26)).
-
 
 ## [0.2.0] - 2023-11-08
 
@@ -46,7 +47,9 @@ All notable changes to this project will be documented in this file.
 
 -   Initial release. Adds DataTable and ArrowBackend, which is 1000x faster for datasets of 500k records or more.
 
-[Unreleased]: https://github.com/tconbeer/textual-fastdatatable/compare/0.2.0...HEAD
+[Unreleased]: https://github.com/tconbeer/textual-fastdatatable/compare/0.2.1...HEAD
+
+[0.2.1]: https://github.com/tconbeer/textual-fastdatatable/compare/0.2.0...0.2.1
 
 [0.2.0]: https://github.com/tconbeer/textual-fastdatatable/compare/0.1.4...0.2.0
 
