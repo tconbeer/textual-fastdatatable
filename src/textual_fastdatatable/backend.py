@@ -128,7 +128,21 @@ class DataTableBackend(ABC):
 
 class ArrowBackend(DataTableBackend):
     def __init__(self, data: pa.Table) -> None:
-        self.data: pa.Table = data
+        # Arrow allows duplicate field names, but a table's to_pylist() and
+        # to_pydict() methods will drop duplicate-named fields!
+        field_names: list[str] = []
+        renamed = False
+        for field in data.column_names:
+            n = 0
+            while field in field_names:
+                field = f"{field}{n}"
+                renamed = True
+                n += 1
+            field_names.append(field)
+        if renamed:
+            self.data: pa.Table = data.rename_columns(field_names)
+        else:
+            self.data = data
         self._string_data: pa.Table | None = None
         self._column_content_widths: list[int] = []
 
