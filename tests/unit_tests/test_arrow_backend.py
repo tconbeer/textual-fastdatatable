@@ -42,6 +42,15 @@ def test_from_pydict(pydict: dict[str, Sequence[str | int]]) -> None:
     backend = ArrowBackend.from_pydict(pydict)
     assert backend.column_count == 3
     assert backend.row_count == 5
+    assert backend.source_row_count == 5
+    assert tuple(backend.columns) == tuple(pydict.keys())
+
+
+def test_from_pydict_with_limit(pydict: dict[str, Sequence[str | int]]) -> None:
+    backend = ArrowBackend.from_pydict(pydict, max_rows=2)
+    assert backend.column_count == 3
+    assert backend.row_count == 2
+    assert backend.source_row_count == 5
     assert tuple(backend.columns) == tuple(pydict.keys())
 
 

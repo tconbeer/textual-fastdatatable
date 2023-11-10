@@ -505,6 +505,7 @@ class DataTable(ScrollView, can_focus=True):
         column_widths: list[int | None] | None = None,
         show_header: bool = True,
         show_row_labels: bool = True,
+        max_rows: int | None = None,
         fixed_rows: int = 0,
         fixed_columns: int = 0,
         zebra_stripes: bool = False,
@@ -522,7 +523,9 @@ class DataTable(ScrollView, can_focus=True):
         super().__init__(name=name, id=id, classes=classes, disabled=disabled)
         try:
             self.backend: DataTableBackend | None = (
-                backend if backend is not None else create_backend(data)  # type: ignore
+                backend
+                if backend is not None
+                else create_backend(data, max_rows=max_rows)  # type: ignore
             )
         except (TypeError, OSError) as e:
             self.backend = None
@@ -628,6 +631,14 @@ class DataTable(ScrollView, can_focus=True):
     def cursor_column(self) -> int:
         """The index of the column that the DataTable cursor is currently on."""
         return self.cursor_coordinate.column
+
+    @property
+    def source_row_count(self) -> int:
+        """The number of rows in the data source used to create the table."""
+        if self.backend is None:
+            return 0
+        else:
+            return self.backend.source_row_count
 
     @property
     def row_count(self) -> int:

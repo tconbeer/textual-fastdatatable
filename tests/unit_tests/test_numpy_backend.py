@@ -24,6 +24,16 @@ def backend(records: list[tuple[int, str, str]]) -> NumpyBackend:
 def test_from_records(backend: NumpyBackend) -> None:
     assert backend.column_count == 3
     assert backend.row_count == 5
+    assert backend.source_row_count == 5
+    assert backend.columns == ("f0", "f1", "f2")
+
+
+def test_from_records_with_limit(records: list[tuple[int, str, str]]) -> None:
+    backend = NumpyBackend(records, max_rows=2)
+    assert backend.column_count == 3
+    assert backend.row_count == 2
+    assert backend.source_row_count == 5
+    assert isinstance(backend.data, np.recarray)
     assert backend.columns == ("f0", "f1", "f2")
 
 
