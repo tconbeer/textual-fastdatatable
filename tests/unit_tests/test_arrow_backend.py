@@ -163,3 +163,12 @@ def test_empty_query() -> None:
     data: dict[str, list] = {"a": []}
     backend = ArrowBackend.from_pydict(data)
     assert backend.column_content_widths == [0]
+
+
+def test_dupe_column_labels() -> None:
+    arr = pa.array([0, 1, 2, 3])
+    tab = pa.table([arr] * 3, names=["a", "a", "a"])
+    backend = ArrowBackend(data=tab)
+    assert backend.column_count == 3
+    assert backend.row_count == 4
+    assert backend.get_row_at(2) == [2, 2, 2]

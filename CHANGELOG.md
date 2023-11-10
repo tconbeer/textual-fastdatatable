@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Bug Fixes
+
+-   Tables with the ArrowBackend no longer display incorrect output when column labels are duplicated ([#26](https://github.com/tconbeer/textual-fastdatatable/issues/26)).
+
+
 ## [0.2.0] - 2023-11-08
 
 ### Features

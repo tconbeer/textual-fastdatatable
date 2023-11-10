@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any, Iterable, Iterator, Literal, Mapping, Sequence, Type, TypeVar
 
+import pandas as pd
+
 from .compute import CastOptions
 from .types import DataType as DataType
 from .types import string as string
@@ -71,6 +73,7 @@ class _Tabular:
     def column(self, i: int | str) -> _PandasConvertible: ...
     def equals(self: T, other: T, check_metadata: bool = False) -> bool: ...
     def itercolumns(self) -> Iterator[_PandasConvertible]: ...
+    def rename_columns(self: T, names: list[str]) -> T: ...
     def select(self: T, columns: Sequence[str | int]) -> T: ...
     def set_column(
         self: T, i: int, field_: str | Field, column: Array | ChunkedArray
@@ -107,11 +110,20 @@ def array(
     safe: bool = True,
     memory_pool: MemoryPool | None = None,
 ) -> Array | ChunkedArray: ...
+def concat_arrays(
+    arrays: Iterable[Array], memory_pool: MemoryPool | None = None
+) -> Array: ...
 def nulls(
     size: int,
     type: DataType | None = None,  # noqa: A002
     memory_pool: MemoryPool | None = None,
 ) -> Array: ...
-def concat_arrays(
-    arrays: Iterable[Array], memory_pool: MemoryPool | None = None
-) -> Array: ...
+def table(
+    data: pd.DataFrame
+    | Mapping[str, _PandasConvertible | list]
+    | list[_PandasConvertible],
+    names: list[str] | None = None,
+    schema: Schema | None = None,
+    metadata: Mapping | None = None,
+    nthreads: int | None = None,
+) -> Table: ...
