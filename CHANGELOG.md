@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.3.0] - 2023-11-11
+
 ### Features
 
 -   The DataTable now accepts a `max_rows` kwarg; if provided, backends will only store the first `max_rows` and the DataTable will only present `max_rows`. The original row count of the data source is available as DataTable().source_row_count ([tconbeer/harlequin#281](https://github.com/tconbeer/harlequin/issues/281)).
@@ -11,7 +13,6 @@ All notable changes to this project will be documented in this file.
 ### API Changes
 
 -   Backends must now accept a `max_rows` kwarg on initialization.
-
 
 ## [0.2.1] - 2023-11-10
 
@@ -56,7 +57,9 @@ All notable changes to this project will be documented in this file.
 
 -   Initial release. Adds DataTable and ArrowBackend, which is 1000x faster for datasets of 500k records or more.
 
-[Unreleased]: https://github.com/tconbeer/textual-fastdatatable/compare/0.2.1...HEAD
+[Unreleased]: https://github.com/tconbeer/textual-fastdatatable/compare/0.3.0...HEAD
+
+[0.3.0]: https://github.com/tconbeer/textual-fastdatatable/compare/0.2.1...0.3.0
 
 [0.2.1]: https://github.com/tconbeer/textual-fastdatatable/compare/0.2.0...0.2.1
 
