@@ -27,21 +27,23 @@ AutoBackendType = Union[
 ]
 
 
-def create_backend(data: AutoBackendType) -> DataTableBackend:
+def create_backend(
+    data: AutoBackendType, max_rows: int | None = None
+) -> DataTableBackend:
     if isinstance(data, pa.Table):
-        return ArrowBackend(data)
+        return ArrowBackend(data, max_rows=max_rows)
     elif isinstance(data, pa.RecordBatch):
-        return ArrowBackend.from_batches(data)
+        return ArrowBackend.from_batches(data, max_rows=max_rows)
     elif isinstance(data, Path) or isinstance(data, str):
-        return ArrowBackend.from_parquet(data)
+        return ArrowBackend.from_parquet(data, max_rows=max_rows)
     elif isinstance(data, Sequence) and isinstance(data[0], Iterable):
-        return ArrowBackend.from_records(data)
+        return ArrowBackend.from_records(data, max_rows=max_rows)
     elif (
         isinstance(data, Mapping)
         and isinstance(next(iter(data.keys())), str)
         and isinstance(next(iter(data.values())), Sequence)
     ):
-        return ArrowBackend.from_pydict(data)
+        return ArrowBackend.from_pydict(data, max_rows=max_rows)
     else:
         raise TypeError(
             f"Cannot automatically create backend for data of type: {type(data)}. "
@@ -51,12 +53,23 @@ def create_backend(data: AutoBackendType) -> DataTableBackend:
 
 class DataTableBackend(ABC):
     @abstractmethod
-    def __init__(self, data: Any) -> None:
+    def __init__(self, data: Any, max_rows: int | None = None) -> None:
+        pass
+
+    @property
+    @abstractmethod
+    def source_row_count(self) -> int:
+        """
+        The number of rows in the source data, before filtering down to max_rows
+        """
         pass
 
     @property
     @abstractmethod
     def row_count(self) -> int:
+        """
+        The number of rows in backend's retained data, after filtering down to max_rows
+        """
         pass
 
     @property
@@ -127,7 +140,7 @@ class DataTableBackend(ABC):
 
 
 class ArrowBackend(DataTableBackend):
-    def __init__(self, data: pa.Table) -> None:
+    def __init__(self, data: pa.Table, max_rows: int | None = None) -> None:
         # Arrow allows duplicate field names, but a table's to_pylist() and
         # to_pydict() methods will drop duplicate-named fields!
         field_names: list[str] = []
@@ -140,7 +153,11 @@ class ArrowBackend(DataTableBackend):
                 n += 1
             field_names.append(field)
         if renamed:
-            self.data: pa.Table = data.rename_columns(field_names)
+            data = data.rename_columns(field_names)
+
+        self._source_row_count = data.num_rows
+        if max_rows is not None and max_rows < self._source_row_count:
+            self.data = data.slice(offset=0, length=max_rows)
         else:
             self.data = data
         self._string_data: pa.Table | None = None
@@ -160,26 +177,39 @@ class ArrowBackend(DataTableBackend):
         return pydict
 
     @classmethod
-    def from_batches(cls, data: pa.RecordBatch) -> "ArrowBackend":
+    def from_batches(
+        cls, data: pa.RecordBatch, max_rows: int | None = None
+    ) -> "ArrowBackend":
         tbl = pa.Table.from_batches([data])
-        return cls(tbl)
+        return cls(tbl, max_rows=max_rows)
 
     @classmethod
-    def from_parquet(cls, path: Path | str) -> "ArrowBackend":
+    def from_parquet(
+        cls, path: Path | str, max_rows: int | None = None
+    ) -> "ArrowBackend":
         tbl = pq.read_table(str(path))
-        return cls(tbl)
+        return cls(tbl, max_rows=max_rows)
 
     @classmethod
-    def from_pydict(cls, data: Mapping[str, Sequence[Any]]) -> "ArrowBackend":
+    def from_pydict(
+        cls, data: Mapping[str, Sequence[Any]], max_rows: int | None = None
+    ) -> "ArrowBackend":
         tbl = pa.Table.from_pydict(dict(data))
-        return cls(tbl)
+        return cls(tbl, max_rows=max_rows)
 
     @classmethod
     def from_records(
-        cls, records: Sequence[Iterable[Any]], has_header: bool = True
+        cls,
+        records: Sequence[Iterable[Any]],
+        has_header: bool = True,
+        max_rows: int | None = None,
     ) -> "ArrowBackend":
         pydict = cls._pydict_from_records(records, has_header)
-        return cls.from_pydict(pydict)
+        return cls.from_pydict(pydict, max_rows=max_rows)
+
+    @property
+    def source_row_count(self) -> int:
+        return self._source_row_count
 
     @property
     def row_count(self) -> int:
@@ -321,13 +351,20 @@ class ArrowBackend(DataTableBackend):
 
 
 class NumpyBackend(DataTableBackend):
-    def __init__(self, data: Sequence[tuple]) -> None:
+    def __init__(self, data: Sequence[tuple], max_rows: int | None = None) -> None:
         if data:
             self.data = np_recarray_fromrecords(data)
+            self._source_row_count = len(self.data)
+            if max_rows is not None and max_rows < self._source_row_count:
+                self.data = self.data[0:max_rows]
             self._column_content_widths: list[int] = []
         else:
             self.data = np.recarray(shape=(0, 0), formats=["f8"])
             self._column_content_widths = [0]
+
+    @property
+    def source_row_count(self) -> int:
+        return self._source_row_count
 
     @property
     def row_count(self) -> int:
