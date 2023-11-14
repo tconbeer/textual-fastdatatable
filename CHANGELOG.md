@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.4.0] - 2023-11-14
+
 ### Breaking API Changes
 
 -   When calling `create_backend` with a sequence of iterables, the default behavior now assumes the data does not contain headers. You can restore the old behavior with `create_backend(has_headers=True)`.
@@ -62,7 +64,9 @@ All notable changes to this project will be documented in this file.
 
 -   Initial release. Adds DataTable and ArrowBackend, which is 1000x faster for datasets of 500k records or more.
 
-[Unreleased]: https://github.com/tconbeer/textual-fastdatatable/compare/0.3.0...HEAD
+[Unreleased]: https://github.com/tconbeer/textual-fastdatatable/compare/0.4.0...HEAD
+
+[0.4.0]: https://github.com/tconbeer/textual-fastdatatable/compare/0.3.0...0.4.0
 
 [0.3.0]: https://github.com/tconbeer/textual-fastdatatable/compare/0.2.1...0.3.0
 
