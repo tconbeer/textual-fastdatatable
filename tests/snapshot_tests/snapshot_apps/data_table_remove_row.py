@@ -26,7 +26,7 @@ class TableApp(App):
     ]
 
     def compose(self) -> ComposeResult:
-        backend = ArrowBackend.from_records(ROWS)
+        backend = ArrowBackend.from_records(ROWS, has_header=True)
         yield DataTable(backend=backend)
 
     def on_mount(self) -> None:

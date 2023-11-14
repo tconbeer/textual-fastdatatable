@@ -32,10 +32,17 @@ def backend(pydict: dict[str, Sequence[str | int]]) -> ArrowBackend:
 
 
 def test_from_records(records: list[tuple[str | int, ...]]) -> None:
-    backend = ArrowBackend.from_records(records)
+    backend = ArrowBackend.from_records(records, has_header=True)
     assert backend.column_count == 3
     assert backend.row_count == 5
     assert tuple(backend.columns) == records[0]
+
+
+def test_from_records_no_header(records: list[tuple[str | int, ...]]) -> None:
+    backend = ArrowBackend.from_records(records[1:], has_header=False)
+    assert backend.column_count == 3
+    assert backend.row_count == 5
+    assert tuple(backend.columns) == ("f0", "f1", "f2")
 
 
 def test_from_pydict(pydict: dict[str, Sequence[str | int]]) -> None:

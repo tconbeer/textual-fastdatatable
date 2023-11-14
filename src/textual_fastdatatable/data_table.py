@@ -525,7 +525,9 @@ class DataTable(ScrollView, can_focus=True):
             self.backend: DataTableBackend | None = (
                 backend
                 if backend is not None
-                else create_backend(data, max_rows=max_rows)  # type: ignore
+                else create_backend(
+                    data, max_rows=max_rows, has_header=(column_labels is None)  # type: ignore
+                )
             )
         except (TypeError, OSError) as e:
             self.backend = None
@@ -1335,7 +1337,7 @@ class DataTable(ScrollView, can_focus=True):
             column_indexes.append(column_index)
         return column_indexes
 
-    def add_rows(self, rows: Iterable[Iterable[CellType]]) -> list[int]:
+    def add_rows(self, rows: Iterable[Iterable[Any]]) -> list[int]:
         """Add a number of rows at the bottom of the DataTable.
 
         Args:
@@ -1347,9 +1349,7 @@ class DataTable(ScrollView, can_focus=True):
                 these keys are used.
         """
         if self.backend is None:
-            self.backend = create_backend(
-                [[str(col.label) for col in self.ordered_columns], *rows]
-            )
+            self.backend = create_backend(list(rows))
             indicies = list(range(self.row_count))
         else:
             indicies = self.backend.append_rows(rows)

@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Breaking API Changes
+
+-   When calling `create_backend` with a sequence of iterables, the default behavior now assumes the data does not contain headers. You can restore the old behavior with `create_backend(has_headers=True)`.
+-   When calling `DataTable(data=...)` with a sequence of iterables, the first row is treated as a header only if `column_labels` is not provided.
+
 ## [0.3.0] - 2023-11-11
 
 ### Features
