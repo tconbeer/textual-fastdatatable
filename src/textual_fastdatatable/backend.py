@@ -28,7 +28,9 @@ AutoBackendType = Union[
 
 
 def create_backend(
-    data: AutoBackendType, max_rows: int | None = None
+    data: AutoBackendType,
+    max_rows: int | None = None,
+    has_header: bool = False,
 ) -> DataTableBackend:
     if isinstance(data, pa.Table):
         return ArrowBackend(data, max_rows=max_rows)
@@ -37,7 +39,7 @@ def create_backend(
     elif isinstance(data, Path) or isinstance(data, str):
         return ArrowBackend.from_parquet(data, max_rows=max_rows)
     elif isinstance(data, Sequence) and isinstance(data[0], Iterable):
-        return ArrowBackend.from_records(data, max_rows=max_rows)
+        return ArrowBackend.from_records(data, max_rows=max_rows, has_header=has_header)
     elif (
         isinstance(data, Mapping)
         and isinstance(next(iter(data.keys())), str)
@@ -165,7 +167,7 @@ class ArrowBackend(DataTableBackend):
 
     @staticmethod
     def _pydict_from_records(
-        records: Sequence[Iterable[Any]], has_header: bool = True
+        records: Sequence[Iterable[Any]], has_header: bool = False
     ) -> dict[str, list[Any]]:
         headers = (
             records[0]
@@ -201,7 +203,7 @@ class ArrowBackend(DataTableBackend):
     def from_records(
         cls,
         records: Sequence[Iterable[Any]],
-        has_header: bool = True,
+        has_header: bool = False,
         max_rows: int | None = None,
     ) -> "ArrowBackend":
         pydict = cls._pydict_from_records(records, has_header)
@@ -277,7 +279,7 @@ class ArrowBackend(DataTableBackend):
         rows = list(records)
         indicies = list(range(self.row_count, self.row_count + len(rows)))
         records_with_headers = [self.data.column_names, *rows]
-        pydict = self._pydict_from_records(records_with_headers)
+        pydict = self._pydict_from_records(records_with_headers, has_header=True)
         old_rows = self.data.to_batches()
         new_rows = pa.RecordBatch.from_pydict(
             pydict,
