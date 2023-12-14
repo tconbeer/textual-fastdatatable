@@ -84,6 +84,10 @@ def test_datatable_no_rows(snap_compare) -> None:
     assert snap_compare(SNAPSHOT_APPS_DIR / "no_rows.py")
 
 
+def test_datatable_no_rows_empty_sequence(snap_compare) -> None:
+    assert snap_compare(SNAPSHOT_APPS_DIR / "no_rows_empty_sequence.py")
+
+
 def test_datatable_from_parquet(snap_compare) -> None:
     assert snap_compare(SNAPSHOT_APPS_DIR / "from_parquet.py")
 

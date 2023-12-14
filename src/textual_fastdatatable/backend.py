@@ -38,6 +38,8 @@ def create_backend(
         return ArrowBackend.from_batches(data, max_rows=max_rows)
     elif isinstance(data, Path) or isinstance(data, str):
         return ArrowBackend.from_parquet(data, max_rows=max_rows)
+    elif isinstance(data, Sequence) and not data:
+        return ArrowBackend(pa.table([]), max_rows=max_rows)
     elif isinstance(data, Sequence) and isinstance(data[0], Iterable):
         return ArrowBackend.from_records(data, max_rows=max_rows, has_header=has_header)
     elif (

@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+-   Fixes a crash caused by calling `create_backend` with an empty sequence.
+
 ## [0.4.0] - 2023-11-14
 
 ### Breaking API Changes
