@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.4.1] - 2023-12-14
+
 -   Fixes a crash caused by calling `create_backend` with an empty sequence.
 
 ## [0.4.0] - 2023-11-14
@@ -66,7 +68,9 @@ All notable changes to this project will be documented in this file.
 
 -   Initial release. Adds DataTable and ArrowBackend, which is 1000x faster for datasets of 500k records or more.
 
-[Unreleased]: https://github.com/tconbeer/textual-fastdatatable/compare/0.4.0...HEAD
+[Unreleased]: https://github.com/tconbeer/textual-fastdatatable/compare/0.4.1...HEAD
+
+[0.4.1]: https://github.com/tconbeer/textual-fastdatatable/compare/0.4.0...0.4.1
 
 [0.4.0]: https://github.com/tconbeer/textual-fastdatatable/compare/0.3.0...0.4.0
 
