@@ -27,7 +27,7 @@ from __future__ import annotations
 import functools
 from dataclasses import dataclass
 from itertools import chain, zip_longest
-from typing import Any, ClassVar, Iterable, NamedTuple, Tuple, cast
+from typing import Any, ClassVar, Iterable, NamedTuple, Tuple, Union, cast
 
 import rich.repr
 from rich.console import RenderableType
@@ -56,10 +56,10 @@ from typing_extensions import Literal, Self
 
 from textual_fastdatatable import DataTableBackend, create_backend
 
-CursorType = Literal["cell", "row", "column", "none"]
+CursorType = Literal["cell", "range", "row", "column", "none"]
 """The valid types of cursors for 
 [`DataTable.cursor_type`][textual.widgets.DataTable.cursor_type]."""
-CellCacheKey = Tuple[int, int, Style, bool, bool, bool, int, PseudoClasses]
+CellCacheKey = Tuple[int, int, Style, bool, bool, bool, bool, int, PseudoClasses]
 LineCacheKey = Tuple[
     int,
     int,
@@ -67,6 +67,7 @@ LineCacheKey = Tuple[
     int,
     Coordinate,
     Coordinate,
+    Union[Coordinate, None],
     Style,
     CursorType,
     bool,
@@ -81,6 +82,7 @@ RowCacheKey = Tuple[
     Style,
     Coordinate,
     Coordinate,
+    Union[Coordinate, None],
     CursorType,
     bool,
     bool,
@@ -164,6 +166,14 @@ class DataTable(ScrollView, can_focus=True):
         Binding("left", "cursor_left", "Cursor Left", show=False),
         Binding("pageup", "page_up", "Page Up", show=False),
         Binding("pagedown", "page_down", "Page Down", show=False),
+        Binding("shift+up", "cursor_up(True)", "Cursor Up", show=False),
+        Binding("shift+down", "cursor_down(True)", "Cursor Down", show=False),
+        Binding("shift+right", "cursor_right(True)", "Cursor Right", show=False),
+        Binding("shift+left", "cursor_left(True)", "Cursor Left", show=False),
+        Binding("shift+pageup", "page_up(True)", "Page Up", show=False),
+        Binding("shift+pagedown", "page_down(True)", "Page Down", show=False),
+        Binding("shift+home", "scroll_home(True)", "Home", show=False),
+        Binding("shift+end", "scroll_end(True)", "End", show=False),
     ]
     """
     | Key(s) | Description |
@@ -177,11 +187,13 @@ class DataTable(ScrollView, can_focus=True):
 
     COMPONENT_CLASSES: ClassVar[set[str]] = {
         "datatable--cursor",
+        "datatable--selectrange",
         "datatable--hover",
         "datatable--fixed",
         "datatable--fixed-cursor",
         "datatable--header",
         "datatable--header-cursor",
+        "datatable--header-selectrange",
         "datatable--header-hover",
         "datatable--odd-row",
         "datatable--even-row",
@@ -190,11 +202,13 @@ class DataTable(ScrollView, can_focus=True):
     | Class | Description |
     | :- | :- |
     | `datatable--cursor` | Target the cursor. |
+    | `datatable--selectrange` | Target the cells in the selection range (ex cursor). |
     | `datatable--hover` | Target the cells under the hover cursor. |
     | `datatable--fixed` | Target fixed columns and fixed rows. |
     | `datatable--fixed-cursor` | Target highlighted and fixed columns or header. |
     | `datatable--header` | Target the header of the data table. |
-    | `datatable--header-cursor` | Target cells highlighted by the cursor. |
+    | `datatable--header-cursor` | Target header cells highlighted by the cursor. |
+    | `datatable--header-selectrange` | Target header cells highlighted by the range. |
     | `datatable--header-hover` | Target hovered header or row label cells. |
     | `datatable--even-row` | Target even rows (row indices start at 0). |
     | `datatable--odd-row` | Target odd rows (row indices start at 0). |
@@ -233,6 +247,11 @@ class DataTable(ScrollView, can_focus=True):
         color: $text;
     }
 
+    DataTable > .datatable--selectrange {
+        background: $secondary 50%;
+        color: $text;
+    }
+
     DataTable > .datatable--fixed-cursor {
         background: $secondary 92%;
         color: $text;
@@ -240,6 +259,11 @@ class DataTable(ScrollView, can_focus=True):
 
     DataTable > .datatable--header-cursor {
         background: $secondary-darken-1;
+        color: $text;
+    }
+
+    DataTable > .datatable--header-cursor {
+        background: $secondary 50%;
         color: $text;
     }
 
@@ -274,6 +298,9 @@ class DataTable(ScrollView, can_focus=True):
     This can be set programmatically or changed via the method
     [`move_cursor`][textual.widgets.DataTable.move_cursor].
     """
+    selection_anchor_coordinate: Reactive[Coordinate | None] = Reactive(
+        None, repaint=False, always_update=True
+    )
     hover_coordinate: Reactive[Coordinate] = Reactive(
         Coordinate(0, 0), repaint=False, always_update=True
     )
@@ -635,6 +662,20 @@ class DataTable(ScrollView, can_focus=True):
         return self.cursor_coordinate.column
 
     @property
+    def selection_anchor_row(self) -> int | None:
+        """The index of the row that the DataTable select range starts on."""
+        if self.selection_anchor_coordinate is None:
+            return None
+        return self.selection_anchor_coordinate.row
+
+    @property
+    def selection_anchor_column(self) -> int | None:
+        """The index of the column that the DataTable select range starts on."""
+        if self.selection_anchor_coordinate is None:
+            return None
+        return self.selection_anchor_coordinate.column
+
+    @property
     def source_row_count(self) -> int:
         """The number of rows in the data source used to create the table."""
         if self.backend is None:
@@ -857,6 +898,10 @@ class DataTable(ScrollView, can_focus=True):
             self._scroll_cursor_into_view(animate=False)
             if self.cursor_type == "cell":
                 self._highlight_coordinate(self.cursor_coordinate)
+            elif self.cursor_type == "range":
+                self._highlight_range(
+                    self.cursor_coordinate, self.selection_anchor_coordinate
+                )
             elif self.cursor_type == "row":
                 self._highlight_row(self.cursor_row)
             elif self.cursor_type == "column":
@@ -899,6 +944,9 @@ class DataTable(ScrollView, can_focus=True):
             if self.cursor_type == "cell":
                 self.refresh_coordinate(old_coordinate)
                 self._highlight_coordinate(new_coordinate)
+            elif self.cursor_type == "range":
+                self.refresh_range(old_coordinate, self.selection_anchor_coordinate)
+                self._highlight_range(new_coordinate, self.selection_anchor_coordinate)
             elif self.cursor_type == "row":
                 self.refresh_row(old_coordinate.row)
                 self._highlight_row(new_coordinate.row)
@@ -909,12 +957,25 @@ class DataTable(ScrollView, can_focus=True):
             # scrolling because it may be animated.
             self.call_next(self._scroll_cursor_into_view)
 
+    def watch_selection_anchor_coordinate(
+        self, old_coordinate: Coordinate | None, new_coordinate: Coordinate | None
+    ) -> None:
+        if self.cursor_type == "range" and old_coordinate != new_coordinate:
+            # Refresh the old and the new cell, and post the appropriate
+            # message to tell users of the newly highlighted row/cell/column.
+            self.refresh_range(self.cursor_coordinate, old_coordinate)
+            self._highlight_range(self.cursor_coordinate, new_coordinate)
+            # If the coordinate was changed via `move_cursor`, give priority to its
+            # scrolling because it may be animated.
+            self.call_next(self._scroll_cursor_into_view)
+
     def move_cursor(
         self,
         *,
         row: int | None = None,
         column: int | None = None,
         animate: bool = False,
+        select: bool = False,
     ) -> None:
         """Move the cursor to the given position.
 
@@ -932,6 +993,11 @@ class DataTable(ScrollView, can_focus=True):
             column: The new column to move the cursor to.
             animate: Whether to animate the change of coordinates.
         """
+        if select and self.selection_anchor_coordinate is None:
+            self.selection_anchor_coordinate = self.cursor_coordinate
+        elif not select:
+            self.selection_anchor_coordinate = None
+
         cursor_row, cursor_column = self.cursor_coordinate
         if row is not None:
             cursor_row = row
@@ -955,6 +1021,25 @@ class DataTable(ScrollView, can_focus=True):
                 DataTable.CellHighlighted(self, cell_value, coordinate=coordinate)
             )
 
+    def _highlight_range(
+        self,
+        cursor_coordinate: Coordinate,
+        selection_anchor_coordinate: Coordinate | None,
+    ) -> None:
+        """Apply highlighting to the range at the coordinate, and post event."""
+        self.refresh_range(cursor_coordinate, selection_anchor_coordinate)
+        # TODO: make an event for this.
+        # try:
+        #     cell_value = self.get_cell_at(coordinate)
+        # except CellDoesNotExist:
+        #     # The cell may not exist e.g. when the table is cleared.
+        #     # In that case, there's nothing for us to do here.
+        #     return
+        # else:
+        #     self.post_message(
+        #         DataTable.CellHighlighted(self, cell_value, coordinate=coordinate)
+        #     )
+
     def _highlight_row(self, row_index: int) -> None:
         """Apply highlighting to the row at the given index, and post event."""
         self.refresh_row(row_index)
@@ -968,6 +1053,13 @@ class DataTable(ScrollView, can_focus=True):
             self.post_message(DataTable.ColumnHighlighted(self, column_index))
 
     def validate_cursor_coordinate(self, value: Coordinate) -> Coordinate:
+        return self._clamp_cursor_coordinate(value)
+
+    def validate_selection_anchor_coordinate(
+        self, value: Coordinate | None
+    ) -> Coordinate | None:
+        if value is None:
+            return None
         return self._clamp_cursor_coordinate(value)
 
     def _clamp_cursor_coordinate(self, coordinate: Coordinate) -> Coordinate:
@@ -986,6 +1078,9 @@ class DataTable(ScrollView, can_focus=True):
         # but may no longer be.
         if old == "cell":
             self.refresh_coordinate(self.cursor_coordinate)
+        elif old == "range":
+            self.refresh_range(self.cursor_coordinate, self.selection_anchor_coordinate)
+            self.selection_anchor_coordinate = None
         elif old == "row":
             row_index, _ = self.cursor_coordinate
             self.refresh_row(row_index)
@@ -1004,6 +1099,10 @@ class DataTable(ScrollView, can_focus=True):
         # Apply the highlighting to the newly relevant cells
         if cursor_type == "cell":
             self._highlight_coordinate(self.cursor_coordinate)
+        elif cursor_type == "range":
+            self._highlight_range(
+                self.cursor_coordinate, self.selection_anchor_coordinate
+            )
         elif cursor_type == "row":
             self._highlight_row(row_index)
         elif cursor_type == "column":
@@ -1086,6 +1185,7 @@ class DataTable(ScrollView, can_focus=True):
             should_highlight = self._should_highlight
             cursor_type = self.cursor_type
             cursor_location = self.cursor_coordinate
+            # TODO: handle range selection
             hover_location = self.hover_coordinate
             base_style = self.rich_style
             fixed_style = self.get_component_styles(
@@ -1118,6 +1218,7 @@ class DataTable(ScrollView, can_focus=True):
                         hover=should_highlight(
                             hover_location, cell_location, cursor_type
                         ),
+                        # TODO: handle range selection
                     )
                     cell_height = len(rendered_cell)
                     rendered_cells.append(
@@ -1169,6 +1270,38 @@ class DataTable(ScrollView, can_focus=True):
             y += self.header_height
         cell_region = Region(x, y, width, height)
         return cell_region
+
+    def _get_range_region(self, coordinate: Coordinate, anchor: Coordinate) -> Region:
+        """
+        Get the region of the range defined by the box with corners at anchor
+        and coordinate.
+        """
+        if not self.is_valid_coordinate(coordinate) or not self.is_valid_coordinate(
+            anchor
+        ):
+            return Region(0, 0, 0, 0)
+
+        min_row = min(coordinate.row, anchor.row)
+        max_row = max(coordinate.row, anchor.row)
+        min_col = min(coordinate.column, anchor.column)
+        max_col = max(coordinate.column, anchor.column)
+
+        x = (
+            sum(column.render_width for column in self.ordered_columns[:min_col])
+            # TODO: support row labels
+            # + self._row_label_column_width
+        )
+        width = sum(
+            column.render_width
+            for column in self.ordered_columns[min_col : max_col + 1]
+        )
+        y = min_row
+        if self.show_header:
+            y += self.header_height
+
+        # TODO: support variable-height rows
+        height = 1 * (max_row - min_row + 1)
+        return Region(x=x, y=y, width=width, height=height)
 
     def _get_row_region(self, row_index: int) -> Region:
         """Get the region of the row at the given index."""
@@ -1224,6 +1357,7 @@ class DataTable(ScrollView, can_focus=True):
             self._column_locations = TwoWayDict({})
         self._require_update_dimensions = True
         self.cursor_coordinate = Coordinate(0, 0)
+        self.selection_anchor_coordinate = None
         self.hover_coordinate = Coordinate(0, 0)
         self._label_column = Column(self._label_column_key, Text(), auto_width=True)
         self._labelled_row_exists = False
@@ -1383,6 +1517,7 @@ class DataTable(ScrollView, can_focus=True):
         self.backend.drop_row(row_index)
 
         self.cursor_coordinate = self.cursor_coordinate
+        self.selection_anchor_coordinate = self.selection_anchor_coordinate
         self.hover_coordinate = self.hover_coordinate
 
         self._update_count += 1
@@ -1422,6 +1557,7 @@ class DataTable(ScrollView, can_focus=True):
     #         del self._data[row][column_key]
 
     #     self.cursor_coordinate = self.cursor_coordinate
+    #     self.selection_anchor_coordinate = self.selection_anchor_coordinate
     #     self.hover_coordinate = self.hover_coordinate
 
     #     self._update_count += 1
@@ -1465,6 +1601,23 @@ class DataTable(ScrollView, can_focus=True):
         if not self.is_valid_coordinate(coordinate):
             return self
         region = self._get_cell_region(coordinate)
+        self._refresh_region(region)
+        return self
+
+    def refresh_range(self, coordinate: Coordinate, anchor: Coordinate | None) -> Self:
+        """Refresh the cell at a coordinate.
+
+        Args:
+            coordinate: The coordinate to refresh.
+
+        Returns:
+            The `DataTable` instance.
+        """
+        if anchor is None:
+            return self.refresh_coordinate(coordinate)
+        if not self.is_valid_coordinate(coordinate):
+            return self
+        region = self._get_range_region(coordinate, anchor)
         self._refresh_region(region)
         return self
 
@@ -1676,6 +1829,7 @@ class DataTable(ScrollView, can_focus=True):
         width: int,
         cursor: bool = False,
         hover: bool = False,
+        in_range: bool = False,
     ) -> SegmentLines:
         """Render the given cell.
 
@@ -1686,6 +1840,7 @@ class DataTable(ScrollView, can_focus=True):
             width: Width of the cell.
             cursor: Is this cell affected by cursor highlighting?
             hover: Is this cell affected by hover cursor highlighting?
+            in_range: is this cell affected by selection range highlighting?
 
         Returns:
             A list of segments per line.
@@ -1705,6 +1860,7 @@ class DataTable(ScrollView, can_focus=True):
             base_style,
             cursor,
             hover,
+            in_range,
             self._show_hover_cursor,
             self._update_count,
             self._pseudo_class_state,
@@ -1727,8 +1883,10 @@ class DataTable(ScrollView, can_focus=True):
                 is_fixed_style_cell,
                 hover,
                 cursor,
+                in_range,
                 self.show_cursor,
                 self._show_hover_cursor,
+                self.cursor_type == "range",
                 self.cursor_foreground_priority == "css",
                 self.cursor_background_priority == "css",
             )
@@ -1767,8 +1925,10 @@ class DataTable(ScrollView, can_focus=True):
         is_fixed_style_cell: bool,
         hover: bool,
         cursor: bool,
+        in_range: bool,
         show_cursor: bool,
         show_hover_cursor: bool,
+        show_range_highlight: bool,
         has_css_foreground_priority: bool,
         has_css_background_priority: bool,
     ) -> tuple[Style, Style]:
@@ -1780,6 +1940,7 @@ class DataTable(ScrollView, can_focus=True):
             is_fixed_style_cell: Should this cell be styled like a fixed cell?
             hover: Does this cell have the hover pseudo class?
             cursor: Is this cell covered by the cursor?
+            in_range: Is this cell in the selection range?
             show_cursor: Do we want to show the cursor in the data table?
             show_hover_cursor: Do we want to show the mouse hover when using
                 the keyboard to move the cursor?
@@ -1804,6 +1965,11 @@ class DataTable(ScrollView, can_focus=True):
                 component_style += get_component("datatable--header-cursor")
             elif is_fixed_style_cell:
                 component_style += get_component("datatable--fixed-cursor")
+        elif in_range and show_range_highlight and show_cursor:
+            cursor_style = get_component("datatable--selectrange")
+            component_style += cursor_style
+            if is_header_cell or is_row_label_cell:
+                component_style += get_component("datatable--header-selectrange")
 
         post_foreground = (
             Style.from_color(color=component_style.color)
@@ -1827,6 +1993,7 @@ class DataTable(ScrollView, can_focus=True):
         base_style: Style,
         cursor_location: Coordinate,
         hover_location: Coordinate,
+        selection_anchor_location: Coordinate | None,
     ) -> tuple[SegmentLines, SegmentLines, int]:
         """Render a single line from a row in the DataTable.
 
@@ -1839,6 +2006,7 @@ class DataTable(ScrollView, can_focus=True):
             base_style: Base style of row.
             cursor_location: The location of the cursor in the DataTable.
             hover_location: The location of the hover cursor in the DataTable.
+            selection_anchor_location: The location of the selection anchor, or None.
 
         Returns:
             Lines for fixed cells, and Lines for scrollable cells, and the x-offset
@@ -1877,6 +2045,7 @@ class DataTable(ScrollView, can_focus=True):
             base_style,
             cursor_location,
             hover_location,
+            selection_anchor_location,
             cursor_type,
             show_cursor,
             self._show_hover_cursor,
@@ -1889,6 +2058,7 @@ class DataTable(ScrollView, can_focus=True):
             return cache_contents[0], cache_contents[1], offset
 
         should_highlight = self._should_highlight
+        should_highlight_range = self._should_highlight_range
         render_cell = self._render_cell
         header_style = self.get_component_styles("datatable--header").rich_style
 
@@ -1908,6 +2078,12 @@ class DataTable(ScrollView, can_focus=True):
                 width=self._row_label_column_width,
                 cursor=should_highlight(cursor_location, cell_location, cursor_type),
                 hover=should_highlight(hover_location, cell_location, cursor_type),
+                in_range=should_highlight_range(
+                    cursor_location,
+                    selection_anchor_location,
+                    cell_location,
+                    cursor_type,
+                ),
             )[line_no]
             fixed_row.append(label_cell_lines)
 
@@ -1930,6 +2106,12 @@ class DataTable(ScrollView, can_focus=True):
                         cursor_location, cell_location, cursor_type
                     ),
                     hover=should_highlight(hover_location, cell_location, cursor_type),
+                    in_range=should_highlight_range(
+                        cursor_location,
+                        selection_anchor_location,
+                        cell_location,
+                        cursor_type,
+                    ),
                 )[line_no]
                 fixed_row.append(fixed_cell_lines)
 
@@ -1946,6 +2128,12 @@ class DataTable(ScrollView, can_focus=True):
                 column.render_width,
                 cursor=should_highlight(cursor_location, cell_location, cursor_type),
                 hover=should_highlight(hover_location, cell_location, cursor_type),
+                in_range=should_highlight_range(
+                    cursor_location,
+                    selection_anchor_location,
+                    cell_location,
+                    cursor_type,
+                ),
             )[line_no]
             scrollable_row.append(cell_lines)
 
@@ -2020,6 +2208,7 @@ class DataTable(ScrollView, can_focus=True):
             width,
             self.cursor_coordinate,
             self.hover_coordinate,
+            self.selection_anchor_coordinate,
             base_style,
             self.cursor_type,
             self._show_hover_cursor,
@@ -2037,6 +2226,7 @@ class DataTable(ScrollView, can_focus=True):
             base_style,
             cursor_location=self.cursor_coordinate,
             hover_location=self.hover_coordinate,
+            selection_anchor_location=self.selection_anchor_coordinate,
         )
 
         fixed_line: list[Segment] = list(chain.from_iterable(fixed)) if fixed else []
@@ -2087,7 +2277,7 @@ class DataTable(ScrollView, can_focus=True):
         Returns:
             Whether or not the given cell should be highlighted.
         """
-        if type_of_cursor == "cell":
+        if type_of_cursor in ("cell", "range"):
             return cursor == target_cell
         elif type_of_cursor == "row":
             cursor_row, _ = cursor
@@ -2097,6 +2287,28 @@ class DataTable(ScrollView, can_focus=True):
             _, cursor_column = cursor
             _, cell_column = target_cell
             return cursor_column == cell_column
+        else:
+            return False
+
+    def _should_highlight_range(
+        self,
+        cursor: Coordinate,
+        selection_anchor: Coordinate | None,
+        target_cell: Coordinate,
+        type_of_cursor: CursorType,
+    ) -> bool:
+        if type_of_cursor != "range":
+            return False
+        elif selection_anchor is None:
+            return False
+        min_row = min(cursor.row, selection_anchor.row)
+        max_row = max(cursor.row, selection_anchor.row)
+        min_col = min(cursor.column, selection_anchor.column)
+        max_col = max(cursor.column, selection_anchor.column)
+        if (min_row <= target_cell.row <= max_row) and (
+            min_col <= target_cell.column <= max_col
+        ):
+            return True
         else:
             return False
 
@@ -2212,9 +2424,10 @@ class DataTable(ScrollView, can_focus=True):
             self.refresh_column(self.hover_column)
         elif cursor_type == "row":
             self.refresh_row(self.hover_row)
-        elif cursor_type == "cell":
+        elif cursor_type in ("cell", "range"):
             self.refresh_coordinate(self.hover_coordinate)
 
+    # TODO: make mouse click and drag highlight selection.
     async def _on_click(self, event: events.Click) -> None:
         self._set_hover_cursor(True)
         meta = event.style.meta
@@ -2244,15 +2457,23 @@ class DataTable(ScrollView, can_focus=True):
             self._scroll_cursor_into_view(animate=True)
             event.stop()
 
-    def action_page_down(self) -> None:
+    def action_page_down(self, select: bool = False) -> None:
         """Move the cursor one page down."""
         self._set_hover_cursor(False)
-        if self.show_cursor and self.cursor_type in ("cell", "row"):
+        if self.show_cursor and self.cursor_type in ("cell", "row", "range"):
             height = self.size.height - (self.header_height if self.show_header else 0)
 
             # Determine how many rows constitutes a "page"
             rows_to_scroll = 0
             row_index, column_index = self.cursor_coordinate
+            if (
+                select
+                and self.cursor_type == "range"
+                and self.selection_anchor_coordinate is None
+            ):
+                self.selection_anchor_coordinate = self.cursor_coordinate
+            elif not select:
+                self.selection_anchor_coordinate = None
             # TODO: support rows with height > 1
             # for ordered_row in self.ordered_rows[row_index:]:
             #     offset += ordered_row.height
@@ -2267,14 +2488,22 @@ class DataTable(ScrollView, can_focus=True):
         else:
             super().action_page_down()
 
-    def action_page_up(self) -> None:
+    def action_page_up(self, select: bool = False) -> None:
         """Move the cursor one page up."""
         self._set_hover_cursor(False)
-        if self.show_cursor and self.cursor_type in ("cell", "row"):
+        if self.show_cursor and self.cursor_type in ("cell", "row", "range"):
             height = self.size.height - (self.header_height if self.show_header else 0)
 
             # Determine how many rows constitutes a "page"
             row_index, column_index = self.cursor_coordinate
+            if (
+                select
+                and self.cursor_type == "range"
+                and self.selection_anchor_coordinate is None
+            ):
+                self.selection_anchor_coordinate = self.cursor_coordinate
+            elif not select:
+                self.selection_anchor_coordinate = None
             # TODO: support rows with height > 1
             # rows_to_scroll = 0
             # for ordered_row in self.ordered_rows[: row_index + 1]:
@@ -2290,57 +2519,105 @@ class DataTable(ScrollView, can_focus=True):
         else:
             super().action_page_up()
 
-    def action_scroll_home(self) -> None:
+    def action_scroll_home(self, select: bool = False) -> None:
         """Scroll to the top of the data table."""
         self._set_hover_cursor(False)
         cursor_type = self.cursor_type
-        if self.show_cursor and (cursor_type == "cell" or cursor_type == "row"):
+        if self.show_cursor and cursor_type in ("cell", "row", "range"):
             row_index, column_index = self.cursor_coordinate
+            if (
+                select
+                and self.cursor_type == "range"
+                and self.selection_anchor_coordinate is None
+            ):
+                self.selection_anchor_coordinate = self.cursor_coordinate
+            elif not select:
+                self.selection_anchor_coordinate = None
             self.cursor_coordinate = Coordinate(0, column_index)
         else:
             super().action_scroll_home()
 
-    def action_scroll_end(self) -> None:
+    def action_scroll_end(self, select: bool = False) -> None:
         """Scroll to the bottom of the data table."""
         self._set_hover_cursor(False)
         cursor_type = self.cursor_type
-        if self.show_cursor and (cursor_type == "cell" or cursor_type == "row"):
+        if self.show_cursor and cursor_type in ("cell", "row", "range"):
             row_index, column_index = self.cursor_coordinate
+            if (
+                select
+                and self.cursor_type == "range"
+                and self.selection_anchor_coordinate is None
+            ):
+                self.selection_anchor_coordinate = self.cursor_coordinate
+            elif not select:
+                self.selection_anchor_coordinate = None
             self.cursor_coordinate = Coordinate(self.row_count - 1, column_index)
         else:
             super().action_scroll_end()
 
-    def action_cursor_up(self) -> None:
+    def action_cursor_up(self, select: bool = False) -> None:
         self._set_hover_cursor(False)
         cursor_type = self.cursor_type
-        if self.show_cursor and (cursor_type == "cell" or cursor_type == "row"):
+        if self.show_cursor and cursor_type in ("cell", "row", "range"):
+            if (
+                select
+                and self.cursor_type == "range"
+                and self.selection_anchor_coordinate is None
+            ):
+                self.selection_anchor_coordinate = self.cursor_coordinate
+            elif not select:
+                self.selection_anchor_coordinate = None
             self.cursor_coordinate = self.cursor_coordinate.up()
         else:
             # If the cursor doesn't move up (e.g. column cursor can't go up),
             # then ensure that we instead scroll the DataTable.
             super().action_scroll_up()
 
-    def action_cursor_down(self) -> None:
+    def action_cursor_down(self, select: bool = False) -> None:
         self._set_hover_cursor(False)
         cursor_type = self.cursor_type
-        if self.show_cursor and (cursor_type == "cell" or cursor_type == "row"):
+        if self.show_cursor and cursor_type in ("cell", "row", "range"):
+            if (
+                select
+                and self.cursor_type == "range"
+                and self.selection_anchor_coordinate is None
+            ):
+                self.selection_anchor_coordinate = self.cursor_coordinate
+            elif not select:
+                self.selection_anchor_coordinate = None
             self.cursor_coordinate = self.cursor_coordinate.down()
         else:
             super().action_scroll_down()
 
-    def action_cursor_right(self) -> None:
+    def action_cursor_right(self, select: bool = False) -> None:
         self._set_hover_cursor(False)
         cursor_type = self.cursor_type
-        if self.show_cursor and (cursor_type == "cell" or cursor_type == "column"):
+        if self.show_cursor and cursor_type in ("cell", "row", "range"):
+            if (
+                select
+                and self.cursor_type == "range"
+                and self.selection_anchor_coordinate is None
+            ):
+                self.selection_anchor_coordinate = self.cursor_coordinate
+            elif not select:
+                self.selection_anchor_coordinate = None
             self.cursor_coordinate = self.cursor_coordinate.right()
             self._scroll_cursor_into_view(animate=True)
         else:
             super().action_scroll_right()
 
-    def action_cursor_left(self) -> None:
+    def action_cursor_left(self, select: bool = False) -> None:
         self._set_hover_cursor(False)
         cursor_type = self.cursor_type
-        if self.show_cursor and (cursor_type == "cell" or cursor_type == "column"):
+        if self.show_cursor and cursor_type in ("cell", "row", "range"):
+            if (
+                select
+                and self.cursor_type == "range"
+                and self.selection_anchor_coordinate is None
+            ):
+                self.selection_anchor_coordinate = self.cursor_coordinate
+            elif not select:
+                self.selection_anchor_coordinate = None
             self.cursor_coordinate = self.cursor_coordinate.left()
             self._scroll_cursor_into_view(animate=True)
         else:
