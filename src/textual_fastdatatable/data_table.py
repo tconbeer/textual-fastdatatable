@@ -901,6 +901,7 @@ class DataTable(ScrollView, can_focus=True):
         self._cell_render_cache.clear()
         self._line_cache.clear()
         self._styles_cache.clear()
+        self._tooltip_cache.clear()
         # self._offset_cache.clear()
         # self._ordered_row_cache.clear()
         self._get_styles_to_render_cell.cache_clear()
