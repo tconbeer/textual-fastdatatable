@@ -2659,7 +2659,7 @@ class DataTable(ScrollView, can_focus=True):
     def action_cursor_right(self, select: bool = False) -> None:
         self._set_hover_cursor(False)
         cursor_type = self.cursor_type
-        if self.show_cursor and cursor_type in ("cell", "row", "range"):
+        if self.show_cursor and cursor_type in ("cell", "column", "range"):
             if (
                 select
                 and self.cursor_type == "range"
@@ -2676,7 +2676,7 @@ class DataTable(ScrollView, can_focus=True):
     def action_cursor_left(self, select: bool = False) -> None:
         self._set_hover_cursor(False)
         cursor_type = self.cursor_type
-        if self.show_cursor and cursor_type in ("cell", "row", "range"):
+        if self.show_cursor and cursor_type in ("cell", "column", "range"):
             if (
                 select
                 and self.cursor_type == "range"
@@ -2714,13 +2714,8 @@ class DataTable(ScrollView, can_focus=True):
             values = [tuple(self.get_row_at(self.cursor_row))]
         elif self.cursor_type == "column":
             values = [tuple(v) for v in self.get_column_at(self.cursor_column)]
-        
-        self.post_message(
-            DataTable.SelectionCopied(
-                data_table=self,
-                values=values
-            )
-        )
+
+        self.post_message(DataTable.SelectionCopied(data_table=self, values=values))
 
     def _order_bounding_coords(self, *coords: Coordinate) -> tuple[int, int, int, int]:
         min_row = min(c.row for c in coords)
