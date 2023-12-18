@@ -174,6 +174,7 @@ class DataTable(ScrollView, can_focus=True):
         Binding("shift+pagedown", "page_down(True)", "Page Down", show=False),
         Binding("shift+home", "scroll_home(True)", "Home", show=False),
         Binding("shift+end", "scroll_end(True)", "End", show=False),
+        Binding("ctrl+c", "copy_selection", "Copy", show=False),
     ]
     """
     | Key(s) | Description |
@@ -517,6 +518,28 @@ class DataTable(ScrollView, can_focus=True):
         def __rich_repr__(self) -> rich.repr.Result:
             yield "row_index", self.row_index
             yield "label", self.label.plain
+
+        @property
+        def control(self) -> DataTable:
+            """Alias for the data table."""
+            return self.data_table
+
+    class SelectionCopied(Message):
+        """Posted when the user presses ctrl+c."""
+
+        def __init__(
+            self,
+            data_table: DataTable,
+            values: list[tuple[Any, ...]],
+        ):
+            self.data_table = data_table
+            """The data table."""
+            self.values = values
+            """The values of the selected cells."""
+            super().__init__()
+
+        def __rich_repr__(self) -> rich.repr.Result:
+            yield "values", self.values
 
         @property
         def control(self) -> DataTable:
@@ -1283,10 +1306,9 @@ class DataTable(ScrollView, can_focus=True):
         ):
             return Region(0, 0, 0, 0)
 
-        min_row = min(coordinate.row, anchor.row)
-        max_row = max(coordinate.row, anchor.row)
-        min_col = min(coordinate.column, anchor.column)
-        max_col = max(coordinate.column, anchor.column)
+        min_row, max_row, min_col, max_col = self._order_bounding_coords(
+            coordinate, anchor
+        )
 
         x = (
             sum(column.render_width for column in self.ordered_columns[:min_col])
@@ -2303,10 +2325,9 @@ class DataTable(ScrollView, can_focus=True):
             return False
         elif selection_anchor is None:
             return False
-        min_row = min(cursor.row, selection_anchor.row)
-        max_row = max(cursor.row, selection_anchor.row)
-        min_col = min(cursor.column, selection_anchor.column)
-        max_col = max(cursor.column, selection_anchor.column)
+        min_row, max_row, min_col, max_col = self._order_bounding_coords(
+            cursor, selection_anchor
+        )
         if (min_row <= target_cell.row <= max_row) and (
             min_col <= target_cell.column <= max_col
         ):
@@ -2454,13 +2475,11 @@ class DataTable(ScrollView, can_focus=True):
         row_index = meta["row"]
         column_index = meta["column"]
         click_coordinate = Coordinate(row_index, column_index)
-        # is_header_click = self.show_header and row_index == -1
+        is_header_click = self.show_header and row_index == -1
         # is_row_label_click = self.show_row_labels and column_index == -1
-        # if is_header_click:
-        #     # Header clicks work even if cursor is off, and doesn't move the cursor.
-        #     column = self.ordered_columns[column_index]
-        #     message = DataTable.HeaderSelected(self, column_index, label=column.label)
-        #     self.post_message(message)
+        if is_header_click:
+            # don't move the cursor
+            pass
         # elif is_row_label_click:
         #     # TODO: support row labels.
         #     # row = self.ordered_rows[row_index]
@@ -2468,7 +2487,7 @@ class DataTable(ScrollView, can_focus=True):
         #         self, row_index, label=Text()  # label=row.label
         #     )
         #     self.post_message(row_message)
-        if (
+        elif (
             self.show_cursor
             and self.cursor_type == "range"
             and click_coordinate != self.cursor_coordinate
@@ -2675,6 +2694,40 @@ class DataTable(ScrollView, can_focus=True):
         self._set_hover_cursor(False)
         if self.show_cursor and self.cursor_type != "none":
             self._post_selected_message()
+
+    def action_copy_selection(self) -> None:
+        if self.cursor_type == "range" and self.selection_anchor_coordinate is not None:
+            min_row, max_row, min_col, max_col = self._order_bounding_coords(
+                self.cursor_coordinate, self.selection_anchor_coordinate
+            )
+            values: list[tuple[Any, ...]] = []
+            for row_index in range(min_row, max_row + 1):
+                values.append(
+                    tuple(
+                        self.get_cell_at(Coordinate(row_index, column_index))
+                        for column_index in range(min_col, max_col + 1)
+                    )
+                )
+        elif self.cursor_type in ("cell", "range"):
+            values = [(self.get_cell_at(self.cursor_coordinate),)]
+        elif self.cursor_type == "row":
+            values = [tuple(self.get_row_at(self.cursor_row))]
+        elif self.cursor_type == "column":
+            values = [tuple(v) for v in self.get_column_at(self.cursor_column)]
+        
+        self.post_message(
+            DataTable.SelectionCopied(
+                data_table=self,
+                values=values
+            )
+        )
+
+    def _order_bounding_coords(self, *coords: Coordinate) -> tuple[int, int, int, int]:
+        min_row = min(c.row for c in coords)
+        max_row = max(c.row for c in coords)
+        min_col = min(c.column for c in coords)
+        max_col = max(c.column for c in coords)
+        return min_row, max_row, min_col, max_col
 
     def _post_selected_message(self) -> None:
         """Post the appropriate message for a selection based on the `cursor_type`."""
