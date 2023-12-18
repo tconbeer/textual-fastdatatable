@@ -31,6 +31,11 @@ def test_datatable_column_cursor_render(snap_compare: Callable) -> None:
     assert snap_compare(SNAPSHOT_APPS_DIR / "data_table_column_cursor.py", press=press)
 
 
+def test_datatable_max_width_render(snap_compare: Callable) -> None:
+    press = ["right", "down", "shift+right", "shift+down", "shift+down"]
+    assert snap_compare(SNAPSHOT_APPS_DIR / "data_table_max_width.py", press=press)
+
+
 def test_datatable_sort_multikey(snap_compare: Callable) -> None:
     press = ["down", "right", "s"]  # Also checks that sort doesn't move cursor.
     assert snap_compare(SNAPSHOT_APPS_DIR / "data_table_sort.py", press=press)

@@ -137,12 +137,18 @@ class Column:
     width: int = 0
     content_width: int = 0
     auto_width: bool = False
+    max_content_width: int | None = None
 
     @property
     def render_width(self) -> int:
         """Width in cells, required to render a column."""
         # +2 is to account for space padding either side of the cell
-        if self.auto_width:
+        if self.auto_width and self.max_content_width is not None:
+            return (
+                min(max(len(self.label), self.content_width), self.max_content_width)
+                + CELL_X_PADDING
+            )
+        elif self.auto_width:
             return max(len(self.label), self.content_width) + CELL_X_PADDING
         else:
             return self.width + CELL_X_PADDING
@@ -553,6 +559,7 @@ class DataTable(ScrollView, can_focus=True):
         data: Any | None = None,
         column_labels: list[str | Text] | None = None,
         column_widths: list[int | None] | None = None,
+        max_column_content_width: int | None = None,
         show_header: bool = True,
         show_row_labels: bool = True,
         max_rows: int | None = None,
@@ -590,6 +597,7 @@ class DataTable(ScrollView, can_focus=True):
         self._column_widths: list[int | None] | None = (
             list(column_widths) if column_widths is not None else None
         )
+        self.max_column_content_width: int | None = max_column_content_width
         self._ordered_columns: None | list[Column] = None
 
         self._row_render_cache: LRUCache[
@@ -1754,6 +1762,7 @@ class DataTable(ScrollView, can_focus=True):
                     width=width if width is not None else 0,
                     content_width=content_width,
                     auto_width=True if width is None or width == 0 else False,
+                    max_content_width=self.max_column_content_width,
                 )
                 for label, width, content_width in zip(
                     labels, widths, column_content_widths
@@ -1928,6 +1937,9 @@ class DataTable(ScrollView, can_focus=True):
                 #     options = self.app.console.options.update_width(width)
                 # else:
                 options = self.app.console.options.update_dimensions(width, 1)
+            if self.max_column_content_width is not None:
+                options.overflow = "ellipsis"
+                options.no_wrap = True
             lines = self.app.console.render_lines(
                 Styled(
                     Padding(cell, (0, 1)),
