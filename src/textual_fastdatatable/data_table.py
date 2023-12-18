@@ -36,7 +36,7 @@ from rich.protocol import is_renderable
 from rich.segment import Segment
 from rich.style import Style
 from rich.text import Text, TextType
-from textual import events
+from textual import events, on
 from textual._cache import LRUCache
 from textual._segment_tools import line_crop
 from textual._two_way_dict import TwoWayDict
@@ -1029,16 +1029,18 @@ class DataTable(ScrollView, can_focus=True):
         """Apply highlighting to the range at the coordinate, and post event."""
         self.refresh_range(cursor_coordinate, selection_anchor_coordinate)
         # TODO: make an event for this.
-        # try:
-        #     cell_value = self.get_cell_at(coordinate)
-        # except CellDoesNotExist:
-        #     # The cell may not exist e.g. when the table is cleared.
-        #     # In that case, there's nothing for us to do here.
-        #     return
-        # else:
-        #     self.post_message(
-        #         DataTable.CellHighlighted(self, cell_value, coordinate=coordinate)
-        #     )
+        try:
+            cell_value = self.get_cell_at(cursor_coordinate)
+        except CellDoesNotExist:
+            # The cell may not exist e.g. when the table is cleared.
+            # In that case, there's nothing for us to do here.
+            return
+        else:
+            self.post_message(
+                DataTable.CellHighlighted(
+                    self, cell_value, coordinate=cursor_coordinate
+                )
+            )
 
     def _highlight_row(self, row_index: int) -> None:
         """Apply highlighting to the row at the given index, and post event."""
@@ -2337,21 +2339,6 @@ class DataTable(ScrollView, can_focus=True):
                 row_style = base_style
         return row_style
 
-    def _on_mouse_move(self, event: events.MouseMove) -> None:
-        """If the hover cursor is visible, display it by extracting the row
-        and column metadata from the segments present in the cells."""
-        self._set_hover_cursor(True)
-        meta = event.style.meta
-        if not meta:
-            self._set_hover_cursor(False)
-            return
-
-        if self.show_cursor and self.cursor_type != "none":
-            try:
-                self.hover_coordinate = Coordinate(meta["row"], meta["column"])
-            except KeyError:
-                pass
-
     def _on_leave(self, _: events.Leave) -> None:
         self._set_hover_cursor(False)
 
@@ -2427,8 +2414,8 @@ class DataTable(ScrollView, can_focus=True):
         elif cursor_type in ("cell", "range"):
             self.refresh_coordinate(self.hover_coordinate)
 
-    # TODO: make mouse click and drag highlight selection.
-    async def _on_click(self, event: events.Click) -> None:
+    @on(events.MouseDown)
+    async def move_cursor_to_mouse_down(self, event: events.MouseDown) -> None:
         self._set_hover_cursor(True)
         meta = event.style.meta
         if not meta:
@@ -2452,10 +2439,71 @@ class DataTable(ScrollView, can_focus=True):
             self.post_message(row_message)
         elif self.show_cursor and self.cursor_type != "none":
             # Only post selection events if there is a visible row/col/cell cursor.
+            self.selection_anchor_coordinate = None
             self.cursor_coordinate = Coordinate(row_index, column_index)
+            self._scroll_cursor_into_view(animate=True)
+            event.stop()
+
+    @on(events.MouseUp)
+    async def move_cursor_to_mouse_up(self, event: events.MouseUp) -> None:
+        self._set_hover_cursor(True)
+        meta = event.style.meta
+        if not meta:
+            return
+
+        row_index = meta["row"]
+        column_index = meta["column"]
+        click_coordinate = Coordinate(row_index, column_index)
+        # is_header_click = self.show_header and row_index == -1
+        # is_row_label_click = self.show_row_labels and column_index == -1
+        # if is_header_click:
+        #     # Header clicks work even if cursor is off, and doesn't move the cursor.
+        #     column = self.ordered_columns[column_index]
+        #     message = DataTable.HeaderSelected(self, column_index, label=column.label)
+        #     self.post_message(message)
+        # elif is_row_label_click:
+        #     # TODO: support row labels.
+        #     # row = self.ordered_rows[row_index]
+        #     row_message = DataTable.RowLabelSelected(
+        #         self, row_index, label=Text()  # label=row.label
+        #     )
+        #     self.post_message(row_message)
+        if (
+            self.show_cursor
+            and self.cursor_type == "range"
+            and click_coordinate != self.cursor_coordinate
+        ):
+            # Only post selection events if there is a visible row/col/cell cursor.
+            if self.selection_anchor_coordinate is None:
+                self.selection_anchor_coordinate = self.cursor_coordinate
+            self.cursor_coordinate = click_coordinate
             self._post_selected_message()
             self._scroll_cursor_into_view(animate=True)
             event.stop()
+
+    @on(events.MouseMove)
+    def set_hover_or_cursor_from_mouse(self, event: events.MouseMove) -> None:
+        """If the hover cursor is visible, display it by extracting the row
+        and column metadata from the segments present in the cells."""
+        meta = event.style.meta
+        if not meta:
+            self._set_hover_cursor(False)
+            return
+        else:
+            self._set_hover_cursor(True)
+
+        mouse_coordinate = Coordinate(meta["row"], meta["column"])
+        if event.button == 1 and self.cursor_type == "range":  # left click and drag
+            if self.selection_anchor_coordinate is None:
+                self.selection_anchor_coordinate = self.cursor_coordinate
+            self.cursor_coordinate = mouse_coordinate
+            self._scroll_cursor_into_view(animate=True)
+            event.stop()
+        elif self.show_cursor and self.cursor_type != "none":
+            try:
+                self.hover_coordinate = mouse_coordinate
+            except KeyError:
+                pass
 
     def action_page_down(self, select: bool = False) -> None:
         """Move the cursor one page down."""
