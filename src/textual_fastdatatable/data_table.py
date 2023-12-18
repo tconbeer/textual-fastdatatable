@@ -32,6 +32,7 @@ from typing import Any, ClassVar, Iterable, NamedTuple, Tuple, Union, cast
 import rich.repr
 from rich.console import RenderableType
 from rich.padding import Padding
+from rich.pretty import Pretty
 from rich.protocol import is_renderable
 from rich.segment import Segment
 from rich.style import Style
@@ -59,6 +60,7 @@ from textual_fastdatatable import DataTableBackend, create_backend
 CursorType = Literal["cell", "range", "row", "column", "none"]
 """The valid types of cursors for 
 [`DataTable.cursor_type`][textual.widgets.DataTable.cursor_type]."""
+TooltipCacheKey = Tuple[int, int, int]
 CellCacheKey = Tuple[int, int, Style, bool, bool, bool, bool, int, PseudoClasses]
 LineCacheKey = Tuple[
     int,
@@ -610,6 +612,10 @@ class DataTable(ScrollView, can_focus=True):
         """Cache for individual cells."""
         self._line_cache: LRUCache[LineCacheKey, Strip] = LRUCache(1000)
         """Cache for lines within rows."""
+        self._tooltip_cache: LRUCache[
+            TooltipCacheKey, RenderableType | None
+        ] = LRUCache(1000)
+        """Cache for values for the tooltip"""
         # self._offset_cache: LRUCache[int, list[tuple[RowKey, int]]] = LRUCache(1)
         """Cached y_offset - key is update_count - see y_offsets property for more
         information """
@@ -2374,6 +2380,7 @@ class DataTable(ScrollView, can_focus=True):
 
     def _on_leave(self, _: events.Leave) -> None:
         self._set_hover_cursor(False)
+        self.tooltip = None
 
     def _get_fixed_offset(self) -> Spacing:
         """Calculate the "fixed offset", that is the space to the top and left
@@ -2516,6 +2523,7 @@ class DataTable(ScrollView, can_focus=True):
     def set_hover_or_cursor_from_mouse(self, event: events.MouseMove) -> None:
         """If the hover cursor is visible, display it by extracting the row
         and column metadata from the segments present in the cells."""
+        self.tooltip = None
         meta = event.style.meta
         if not meta:
             self._set_hover_cursor(False)
@@ -2535,6 +2543,36 @@ class DataTable(ScrollView, can_focus=True):
                 self.hover_coordinate = mouse_coordinate
             except KeyError:
                 pass
+
+        self._set_tooltip_from_cell_at(mouse_coordinate)
+
+    def _set_tooltip_from_cell_at(self, coordinate: Coordinate) -> None:
+        # TODO: support row labels
+        if self.max_column_content_width is None:
+            return
+        cache_key = (coordinate.row, coordinate.column, self._update_count)
+        if cache_key not in self._tooltip_cache:
+            if coordinate.row == -1:  # hover over header
+                raw_value = self.ordered_columns[coordinate.column].label
+            else:
+                raw_value = self.get_cell_at(coordinate)
+            if (
+                self._measure_cell_content_width(raw_value)
+                > self.max_column_content_width
+            ):
+                if isinstance(raw_value, Text):
+                    self._tooltip_cache[cache_key] = raw_value
+                else:
+                    self._tooltip_cache[cache_key] = Pretty(raw_value)
+            else:
+                self._tooltip_cache[cache_key] = None
+        self.tooltip = self._tooltip_cache[cache_key]
+
+    def _measure_cell_content_width(self, value: Any) -> int:
+        if hasattr(value, "__rich_console__"):
+            return self.app.console.measure(value).minimum
+        else:
+            return len(str(value))
 
     def action_page_down(self, select: bool = False) -> None:
         """Move the cursor one page down."""
