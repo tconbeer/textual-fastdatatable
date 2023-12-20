@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Features
+
+-   Adds a `range` cursor type that will highlight a range of selected cells, like Excel.
+-   <kbd>ctrl+c</kbd> now posts a `SelectionCopied` message, with a values attribute that conttains a list of tuples of values from the data table.
+
 ## [0.4.1] - 2023-12-14
 
 -   Fixes a crash caused by calling `create_backend` with an empty sequence.

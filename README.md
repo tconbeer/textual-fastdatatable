@@ -100,3 +100,27 @@ especially adding or removing rows, may be slow.
 The `ArrowBackend` cannot be initialized without data, however, the DataTable can (either with or without `column_labels`).
 
 The `ArrowBackend` cannot store arbitrary Python objects or Rich Renderables as values. It may widen types to strings unnecessarily.
+
+## Additional Features
+
+`ctrl+c` will post a SelectionCopied message with a list of tuples of the values selected by the cursor. To use, initialize with `cursor_type=range` from an app that does NOT inherit bindings.
+
+```py
+from textual.app import App, ComposeResult
+
+from textual_fastdatatable import ArrowBackend, DataTable
+
+
+class TableApp(App, inherit_bindings=False):
+    BINDINGS = [("ctrl+q", "quit", "Quit")]
+
+    def compose(self) -> ComposeResult:
+        backend = ArrowBackend.from_parquet("./tests/data/lap_times_538121.parquet")
+        yield DataTable(backend=backend, cursor_type="range")
+
+
+if __name__ == "__main__":
+    app = TableApp()
+    app.run()
+
+```

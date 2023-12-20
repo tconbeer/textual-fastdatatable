@@ -23,9 +23,7 @@ class TableApp(App):
         backend = ArrowBackend.from_pydict(
             {label: [row[i] for row in data] for i, label in enumerate(labels)}
         )
-        table = DataTable(
-            backend=backend, cursor_type="column", fixed_columns=1, fixed_rows=1
-        )
+        table = DataTable(backend=backend, cursor_type="range")
         table.focus()
         yield table
 
