@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.5.0] - 2023-12-21
+
 ### Features
 
 -   Adds a `range` cursor type that will highlight a range of selected cells, like Excel.
@@ -74,7 +76,9 @@ All notable changes to this project will be documented in this file.
 
 -   Initial release. Adds DataTable and ArrowBackend, which is 1000x faster for datasets of 500k records or more.
 
-[Unreleased]: https://github.com/tconbeer/textual-fastdatatable/compare/0.4.1...HEAD
+[Unreleased]: https://github.com/tconbeer/textual-fastdatatable/compare/0.5.0...HEAD
+
+[0.5.0]: https://github.com/tconbeer/textual-fastdatatable/compare/0.4.1...0.5.0
 
 [0.4.1]: https://github.com/tconbeer/textual-fastdatatable/compare/0.4.0...0.4.1
 
