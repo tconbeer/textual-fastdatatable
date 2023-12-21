@@ -8,6 +8,7 @@ All notable changes to this project will be documented in this file.
 
 -   Adds a `range` cursor type that will highlight a range of selected cells, like Excel.
 -   <kbd>ctrl+c</kbd> now posts a `SelectionCopied` message, with a values attribute that conttains a list of tuples of values from the data table.
+-   Adds a `max_column_content_width` parameter to DataTable. If set, DataTable will truncate values longer than the width, but show the full value in a tooltip on hover.
 
 ## [0.4.1] - 2023-12-14
 

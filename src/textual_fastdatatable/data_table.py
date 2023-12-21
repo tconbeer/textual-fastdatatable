@@ -32,6 +32,7 @@ from typing import Any, ClassVar, Iterable, NamedTuple, Tuple, Union, cast
 import rich.repr
 from rich.console import RenderableType
 from rich.padding import Padding
+from rich.pretty import Pretty
 from rich.protocol import is_renderable
 from rich.segment import Segment
 from rich.style import Style
@@ -59,6 +60,7 @@ from textual_fastdatatable import DataTableBackend, create_backend
 CursorType = Literal["cell", "range", "row", "column", "none"]
 """The valid types of cursors for 
 [`DataTable.cursor_type`][textual.widgets.DataTable.cursor_type]."""
+TooltipCacheKey = Tuple[int, int, int]
 CellCacheKey = Tuple[int, int, Style, bool, bool, bool, bool, int, PseudoClasses]
 LineCacheKey = Tuple[
     int,
@@ -137,12 +139,18 @@ class Column:
     width: int = 0
     content_width: int = 0
     auto_width: bool = False
+    max_content_width: int | None = None
 
     @property
     def render_width(self) -> int:
         """Width in cells, required to render a column."""
         # +2 is to account for space padding either side of the cell
-        if self.auto_width:
+        if self.auto_width and self.max_content_width is not None:
+            return (
+                min(max(len(self.label), self.content_width), self.max_content_width)
+                + CELL_X_PADDING
+            )
+        elif self.auto_width:
             return max(len(self.label), self.content_width) + CELL_X_PADDING
         else:
             return self.width + CELL_X_PADDING
@@ -553,6 +561,7 @@ class DataTable(ScrollView, can_focus=True):
         data: Any | None = None,
         column_labels: list[str | Text] | None = None,
         column_widths: list[int | None] | None = None,
+        max_column_content_width: int | None = None,
         show_header: bool = True,
         show_row_labels: bool = True,
         max_rows: int | None = None,
@@ -590,6 +599,7 @@ class DataTable(ScrollView, can_focus=True):
         self._column_widths: list[int | None] | None = (
             list(column_widths) if column_widths is not None else None
         )
+        self.max_column_content_width: int | None = max_column_content_width
         self._ordered_columns: None | list[Column] = None
 
         self._row_render_cache: LRUCache[
@@ -602,6 +612,10 @@ class DataTable(ScrollView, can_focus=True):
         """Cache for individual cells."""
         self._line_cache: LRUCache[LineCacheKey, Strip] = LRUCache(1000)
         """Cache for lines within rows."""
+        self._tooltip_cache: LRUCache[
+            TooltipCacheKey, RenderableType | None
+        ] = LRUCache(1000)
+        """Cache for values for the tooltip"""
         # self._offset_cache: LRUCache[int, list[tuple[RowKey, int]]] = LRUCache(1)
         """Cached y_offset - key is update_count - see y_offsets property for more
         information """
@@ -887,6 +901,7 @@ class DataTable(ScrollView, can_focus=True):
         self._cell_render_cache.clear()
         self._line_cache.clear()
         self._styles_cache.clear()
+        self._tooltip_cache.clear()
         # self._offset_cache.clear()
         # self._ordered_row_cache.clear()
         self._get_styles_to_render_cell.cache_clear()
@@ -1754,6 +1769,7 @@ class DataTable(ScrollView, can_focus=True):
                     width=width if width is not None else 0,
                     content_width=content_width,
                     auto_width=True if width is None or width == 0 else False,
+                    max_content_width=self.max_column_content_width,
                 )
                 for label, width, content_width in zip(
                     labels, widths, column_content_widths
@@ -1928,6 +1944,9 @@ class DataTable(ScrollView, can_focus=True):
                 #     options = self.app.console.options.update_width(width)
                 # else:
                 options = self.app.console.options.update_dimensions(width, 1)
+            if self.max_column_content_width is not None:
+                options.overflow = "ellipsis"
+                options.no_wrap = True
             lines = self.app.console.render_lines(
                 Styled(
                     Padding(cell, (0, 1)),
@@ -2362,6 +2381,7 @@ class DataTable(ScrollView, can_focus=True):
 
     def _on_leave(self, _: events.Leave) -> None:
         self._set_hover_cursor(False)
+        self.tooltip = None
 
     def _get_fixed_offset(self) -> Spacing:
         """Calculate the "fixed offset", that is the space to the top and left
@@ -2504,6 +2524,7 @@ class DataTable(ScrollView, can_focus=True):
     def set_hover_or_cursor_from_mouse(self, event: events.MouseMove) -> None:
         """If the hover cursor is visible, display it by extracting the row
         and column metadata from the segments present in the cells."""
+        self.tooltip = None
         meta = event.style.meta
         if not meta:
             self._set_hover_cursor(False)
@@ -2523,6 +2544,36 @@ class DataTable(ScrollView, can_focus=True):
                 self.hover_coordinate = mouse_coordinate
             except KeyError:
                 pass
+
+        self._set_tooltip_from_cell_at(mouse_coordinate)
+
+    def _set_tooltip_from_cell_at(self, coordinate: Coordinate) -> None:
+        # TODO: support row labels
+        if self.max_column_content_width is None:
+            return
+        cache_key = (coordinate.row, coordinate.column, self._update_count)
+        if cache_key not in self._tooltip_cache:
+            if coordinate.row == -1:  # hover over header
+                raw_value = self.ordered_columns[coordinate.column].label
+            else:
+                raw_value = self.get_cell_at(coordinate)
+            if (
+                self._measure_cell_content_width(raw_value)
+                > self.max_column_content_width
+            ):
+                if isinstance(raw_value, Text):
+                    self._tooltip_cache[cache_key] = raw_value
+                else:
+                    self._tooltip_cache[cache_key] = Pretty(raw_value)
+            else:
+                self._tooltip_cache[cache_key] = None
+        self.tooltip = self._tooltip_cache[cache_key]
+
+    def _measure_cell_content_width(self, value: Any) -> int:
+        if hasattr(value, "__rich_console__"):
+            return self.app.console.measure(value).minimum
+        else:
+            return len(str(value))
 
     def action_page_down(self, select: bool = False) -> None:
         """Move the cursor one page down."""
