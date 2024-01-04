@@ -347,7 +347,7 @@ class ArrowBackend(DataTableBackend):
                 pa.string(),
                 safe=False,
             )
-        except pl.ArrowNotImplementedError:
+        except (pl.ArrowNotImplementedError, pl.ArrowInvalid):
             # todo: vectorize this with a pyarrow udf
             native_list = arr.to_pylist()
             arr = pa.array([str(i) for i in native_list], type=pa.string())
