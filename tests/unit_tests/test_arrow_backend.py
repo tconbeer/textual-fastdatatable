@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Sequence
 
@@ -188,3 +189,15 @@ def test_dupe_column_labels() -> None:
     assert backend.column_count == 3
     assert backend.row_count == 4
     assert backend.get_row_at(2) == [2, 2, 2]
+
+
+def test_timestamp_with_tz() -> None:
+    """
+    Ensure datetimes with offsets but no names do not crash the data table
+    when casting to string.
+    """
+    dt = datetime(2024, 1, 1, hour=15, tzinfo=timezone(offset=timedelta(hours=-5)))
+    arr = pa.array([dt, dt, dt])
+    tab = pa.table([arr], names=["created_at"])
+    backend = ArrowBackend(data=tab)
+    assert backend.column_content_widths == [25]

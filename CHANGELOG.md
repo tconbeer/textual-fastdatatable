@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Bug Fixes
+
+-   Adds a dependency on pytz for Python <3.9 for timezone support.
+-   Fixes a bug where Arrow crashes while casting timestamptz to string ([tconbeer/harlequin#382](https://github.com/tconbeer/harlequin/issues/382)).
+
 ## [0.5.0] - 2023-12-21
 
 ### Features
