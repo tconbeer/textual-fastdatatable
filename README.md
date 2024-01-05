@@ -103,6 +103,8 @@ The `ArrowBackend` cannot store arbitrary Python objects or Rich Renderables as 
 
 ## Additional Features
 
+### Copying Data from the Table
+
 `ctrl+c` will post a SelectionCopied message with a list of tuples of the values selected by the cursor. To use, initialize with `cursor_type=range` from an app that does NOT inherit bindings.
 
 ```py
@@ -122,5 +124,8 @@ class TableApp(App, inherit_bindings=False):
 if __name__ == "__main__":
     app = TableApp()
     app.run()
-
 ```
+
+### Truncating long values
+
+The `DataTable` will automatically calculate column widths; if you set a `max_column_content_width` at initialization, it will truncate any long values at that width; the full value will be visible on hover in a tooltip (and the full value will always be copied to the clipboard).

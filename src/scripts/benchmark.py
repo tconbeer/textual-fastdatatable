@@ -53,7 +53,7 @@ class BuiltinApp(App):
 
 
 class ArrowBackendApp(App):
-    TITLE = "FastDataTable (Arrow)"
+    TITLE = "FastDataTable (Arrow from Parquet)"
 
     def __init__(
         self,
@@ -119,7 +119,7 @@ class NumpyApp(App):
 
 
 if __name__ == "__main__":
-    app_defs = [ArrowBackendAppFromRecords, BuiltinApp, ArrowBackendApp, NumpyApp]
+    app_defs = [BuiltinApp, ArrowBackendApp, ArrowBackendAppFromRecords, NumpyApp]
     bench = [
         (f"lap_times_{n}.parquet", 3 if n <= 10000 else 1)
         for n in [100, 1000, 10000, 100000, 538121]
