@@ -12,7 +12,7 @@ def test_auto_table(snap_compare: Callable) -> None:
 
 
 def test_datatable_render(snap_compare: Callable) -> None:
-    press = ["tab", "down", "down", "right", "up", "left"]
+    press = ["down", "down", "right", "up", "left"]
     assert snap_compare(SNAPSHOT_APPS_DIR / "data_table.py", press=press)
 
 

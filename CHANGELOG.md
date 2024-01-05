@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Features
+
+-   Adds keybindings for navigating the cursor in the data table. <kbd>ctrl+right/left/up/down/home/end</kbd> (with <kbd>shift</kbd> variants), <kbd>tab</kbd>, <kbd>shift+tab</kbd>, <kbd>ctrl+a</kbd> now all do roughly what they do in Excel (if the cursor type is `range`).
+
 ## [0.5.1] - 2024-01-05
 
 ### Bug Fixes
