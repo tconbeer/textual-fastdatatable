@@ -19,6 +19,7 @@ python = "^3.8"
 textual = ">=0.41.0"
 pyarrow = ">=7.0.0"
 pytz = {version = "^2023", python = "<3.9.0"} # arrow timestamptz support py<3.9
+tzdata = {version = ">=2023", markers = "sys_platform == 'win32'"} # arrow timestamptz support on windows
 
 [tool.poetry.group.dev.dependencies]
 pre-commit = "^3.3.1"
