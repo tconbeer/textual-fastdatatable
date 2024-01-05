@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from contextlib import suppress
 from pathlib import Path
 from typing import Any, Dict, Iterable, Literal, Mapping, Sequence, Union
 
@@ -9,6 +10,7 @@ import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.lib as pl
 import pyarrow.parquet as pq
+import pyarrow.types as pt
 from numpy.core.records import (
     array as np_recarray,
 )
@@ -304,7 +306,7 @@ class ArrowBackend(DataTableBackend):
         column = self.data.column(column_index)
         pycolumn = column.to_pylist()
         pycolumn[row_index] = value
-        new_type = pa.string() if pa.types.is_null(column.type) else column.type
+        new_type = pa.string() if pt.is_null(column.type) else column.type
         self.data = self.data.set_column(
             column_index,
             self.data.column_names[column_index],
@@ -335,8 +337,9 @@ class ArrowBackend(DataTableBackend):
         self._string_data = None
         self._column_content_widths = []
 
-    @staticmethod
-    def _safe_cast_arr_to_str(arr: pa._PandasConvertible) -> pa._PandasConvertible:
+    def _safe_cast_arr_to_str(
+        self, arr: pa._PandasConvertible
+    ) -> pa._PandasConvertible:
         """
         Safe here means avoiding type errors casting to str; ironically that means
         setting PyArrow safe=false. If PyArrow can't do the cast (as with structs
@@ -348,9 +351,21 @@ class ArrowBackend(DataTableBackend):
                 safe=False,
             )
         except (pl.ArrowNotImplementedError, pl.ArrowInvalid):
-            # todo: vectorize this with a pyarrow udf
-            native_list = arr.to_pylist()
-            arr = pa.array([str(i) for i in native_list], type=pa.string())
+
+            def py_str(_ctx: Any, arr: pa.Array) -> str | pa.Array | pa.ChunkedArray:
+                return pa.array([str(el) for el in arr], type=pa.string())
+
+            udf_name = f"tfdt_pystr_{arr.type}"
+            with suppress(pl.ArrowKeyError):  # already registered
+                pc.register_scalar_function(
+                    py_str,
+                    function_name=udf_name,
+                    function_doc={"summary": "str", "description": "built-in str"},
+                    in_types={"arr": arr.type},
+                    out_type=pa.string(),
+                )
+
+            arr = pc.call_function(udf_name, [arr])
         return arr.fill_null("")
 
 
