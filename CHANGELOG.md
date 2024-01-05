@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.6.0] - 2024-01-05
+
 ### Features
 
 -   Adds keybindings for navigating the cursor in the data table. <kbd>ctrl+right/left/up/down/home/end</kbd> (with <kbd>shift</kbd> variants), <kbd>tab</kbd>, <kbd>shift+tab</kbd>, <kbd>ctrl+a</kbd> now all do roughly what they do in Excel (if the cursor type is `range`).
@@ -91,7 +93,9 @@ All notable changes to this project will be documented in this file.
 
 -   Initial release. Adds DataTable and ArrowBackend, which is 1000x faster for datasets of 500k records or more.
 
-[Unreleased]: https://github.com/tconbeer/textual-fastdatatable/compare/0.5.1...HEAD
+[Unreleased]: https://github.com/tconbeer/textual-fastdatatable/compare/0.6.0...HEAD
+
+[0.6.0]: https://github.com/tconbeer/textual-fastdatatable/compare/0.5.1...0.6.0
 
 [0.5.1]: https://github.com/tconbeer/textual-fastdatatable/compare/0.5.0...0.5.1
 
