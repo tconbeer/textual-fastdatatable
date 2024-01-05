@@ -174,8 +174,8 @@ class DataTable(ScrollView, can_focus=True):
         Binding("ctrl+down", "scroll_end", "End", show=False),
         Binding("right", "cursor_right", "Cursor Right", show=False),
         Binding("left", "cursor_left", "Cursor Left", show=False),
-        Binding("tab", "cursor_right", "Cursor Right", show=False),
-        Binding("shift+tab", "cursor_left", "Cursor Left", show=False),
+        Binding("tab", "cursor_next", "Cursor Next", show=False),
+        Binding("shift+tab", "cursor_prev", "Cursor Prev", show=False),
         Binding("ctrl+right", "cursor_row_end", "Cursor Right", show=False),
         Binding("ctrl+left", "cursor_row_start", "Cursor Left", show=False),
         Binding("pageup", "page_up", "Page Up", show=False),
@@ -2708,6 +2708,42 @@ class DataTable(ScrollView, can_focus=True):
         if self.show_cursor and cursor_type in ("cell", "column", "range"):
             self._set_selection_anchor(select)
             self.cursor_coordinate = self.cursor_coordinate.left()
+            self._scroll_cursor_into_view(animate=True)
+        else:
+            super().action_scroll_left()
+
+    def action_cursor_next(self, select: bool = False) -> None:
+        self._set_hover_cursor(False)
+        cursor_type = self.cursor_type
+        if self.show_cursor and cursor_type in ("cell", "column", "range"):
+            self._set_selection_anchor(select)
+            old_coordinate = self.cursor_coordinate
+            self.cursor_coordinate = self.cursor_coordinate.right()
+            if old_coordinate == self.cursor_coordinate:  # at end of row
+                if old_coordinate.row < self.row_count - 1:
+                    self.cursor_coordinate = Coordinate(old_coordinate.row + 1, 0)
+                else:
+                    self.cursor_coordinate = Coordinate(0, 0)
+            self._scroll_cursor_into_view(animate=True)
+        else:
+            super().action_scroll_right()
+
+    def action_cursor_prev(self, select: bool = False) -> None:
+        self._set_hover_cursor(False)
+        cursor_type = self.cursor_type
+        if self.show_cursor and cursor_type in ("cell", "column", "range"):
+            self._set_selection_anchor(select)
+            old_coordinate = self.cursor_coordinate
+            self.cursor_coordinate = self.cursor_coordinate.left()
+            if old_coordinate == self.cursor_coordinate:  # at start of row
+                if old_coordinate.row > 0:
+                    self.cursor_coordinate = Coordinate(
+                        old_coordinate.row - 1, self.column_count - 1
+                    )
+                else:
+                    self.cursor_coordinate = Coordinate(
+                        self.row_count - 1, self.column_count - 1
+                    )
             self._scroll_cursor_into_view(animate=True)
         else:
             super().action_scroll_left()
