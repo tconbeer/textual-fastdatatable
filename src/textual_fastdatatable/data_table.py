@@ -2712,28 +2712,37 @@ class DataTable(ScrollView, can_focus=True):
         else:
             super().action_scroll_left()
 
-    def action_cursor_next(self, select: bool = False) -> None:
+    def action_cursor_next(self) -> None:
         self._set_hover_cursor(False)
+        if not self.show_cursor:
+            super().action_scroll_right()
+            return
         cursor_type = self.cursor_type
-        if self.show_cursor and cursor_type in ("cell", "column", "range"):
-            self._set_selection_anchor(select)
-            old_coordinate = self.cursor_coordinate
+        self.selection_anchor_coordinate = None
+        old_coordinate = self.cursor_coordinate
+        if cursor_type in ("cell", "column", "range"):
             self.cursor_coordinate = self.cursor_coordinate.right()
             if old_coordinate == self.cursor_coordinate:  # at end of row
                 if old_coordinate.row < self.row_count - 1:
                     self.cursor_coordinate = Coordinate(old_coordinate.row + 1, 0)
                 else:
                     self.cursor_coordinate = Coordinate(0, 0)
-            self._scroll_cursor_into_view(animate=True)
-        else:
-            super().action_scroll_right()
+        elif cursor_type == "row":
+            self.cursor_coordinate = self.cursor_coordinate.down()
+            if old_coordinate == self.cursor_coordinate:  # at end of table
+                self.cursor_coordinate = Coordinate(0, 0)
 
-    def action_cursor_prev(self, select: bool = False) -> None:
+        self._scroll_cursor_into_view(animate=True)
+
+    def action_cursor_prev(self) -> None:
         self._set_hover_cursor(False)
+        if not self.show_cursor:
+            super().action_scroll_right()
+            return
         cursor_type = self.cursor_type
-        if self.show_cursor and cursor_type in ("cell", "column", "range"):
-            self._set_selection_anchor(select)
-            old_coordinate = self.cursor_coordinate
+        self.selection_anchor_coordinate = None
+        old_coordinate = self.cursor_coordinate
+        if cursor_type in ("cell", "column", "range"):
             self.cursor_coordinate = self.cursor_coordinate.left()
             if old_coordinate == self.cursor_coordinate:  # at start of row
                 if old_coordinate.row > 0:
@@ -2744,9 +2753,11 @@ class DataTable(ScrollView, can_focus=True):
                     self.cursor_coordinate = Coordinate(
                         self.row_count - 1, self.column_count - 1
                     )
-            self._scroll_cursor_into_view(animate=True)
-        else:
-            super().action_scroll_left()
+        elif cursor_type == "row":
+            self.cursor_coordinate = self.cursor_coordinate.up()
+            if old_coordinate == self.cursor_coordinate:  # at start of table
+                self.cursor_coordinate = Coordinate(self.row_count - 1, 0)
+        self._scroll_cursor_into_view(animate=True)
 
     def action_cursor_row_end(self, select: bool = False) -> None:
         self._set_hover_cursor(False)
@@ -2814,7 +2825,7 @@ class DataTable(ScrollView, can_focus=True):
         elif self.cursor_type == "row":
             values = [tuple(self.get_row_at(self.cursor_row))]
         elif self.cursor_type == "column":
-            values = [tuple(v) for v in self.get_column_at(self.cursor_column)]
+            values = [(v,) for v in self.get_column_at(self.cursor_column)]
 
         self.post_message(DataTable.SelectionCopied(data_table=self, values=values))
 

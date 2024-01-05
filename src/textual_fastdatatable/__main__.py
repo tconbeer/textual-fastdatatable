@@ -8,9 +8,7 @@ class TableApp(App, inherit_bindings=False):
 
     def compose(self) -> ComposeResult:
         backend = ArrowBackend.from_parquet("./tests/data/lap_times_538121.parquet")
-        yield DataTable(
-            backend=backend, cursor_type="range", max_column_content_width=5
-        )
+        yield DataTable(backend=backend, cursor_type="row", max_column_content_width=5)
 
 
 if __name__ == "__main__":

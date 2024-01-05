@@ -6,7 +6,8 @@ All notable changes to this project will be documented in this file.
 
 ### Bug Fixes
 
--   Fixes the behavior of <kbd>tab</kbd> and <kbd>shift+tab</kbd> to cycle to the next/prev row if at the end/start of a row.
+-   Fixes the behavior of <kbd>tab</kbd> and <kbd>shift+tab</kbd> to cycle to the next/prev row if at the end/start of a row or table.
+-   Fixes a crash from pressing <kbd>ctrl+c</kbd> when the cursor type is column.
 
 ## [0.6.0] - 2024-01-05
 
