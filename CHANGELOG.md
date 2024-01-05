@@ -11,6 +11,10 @@ All notable changes to this project will be documented in this file.
 -   Adds a dependency on pytz for Python &lt;3.9 for timezone support.
 -   Fixes a bug where Arrow crashes while casting timestamptz to string ([tconbeer/harlequin#382](https://github.com/tconbeer/harlequin/issues/382)).
 
+### Performance
+
+-   Vectorizes fallback string casting for datatypes unsupported by `pc.cast` ([#8](https://github.com/tconbeer/textual-fastdatatable/issues/8))
+
 ## [0.5.0] - 2023-12-21
 
 ### Features
