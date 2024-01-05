@@ -4,9 +4,11 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.5.1] - 2024-01-05
+
 ### Bug Fixes
 
--   Adds a dependency on pytz for Python <3.9 for timezone support.
+-   Adds a dependency on pytz for Python &lt;3.9 for timezone support.
 -   Fixes a bug where Arrow crashes while casting timestamptz to string ([tconbeer/harlequin#382](https://github.com/tconbeer/harlequin/issues/382)).
 
 ## [0.5.0] - 2023-12-21
@@ -81,7 +83,9 @@ All notable changes to this project will be documented in this file.
 
 -   Initial release. Adds DataTable and ArrowBackend, which is 1000x faster for datasets of 500k records or more.
 
-[Unreleased]: https://github.com/tconbeer/textual-fastdatatable/compare/0.5.0...HEAD
+[Unreleased]: https://github.com/tconbeer/textual-fastdatatable/compare/0.5.1...HEAD
+
+[0.5.1]: https://github.com/tconbeer/textual-fastdatatable/compare/0.5.0...0.5.1
 
 [0.5.0]: https://github.com/tconbeer/textual-fastdatatable/compare/0.4.1...0.5.0
 
