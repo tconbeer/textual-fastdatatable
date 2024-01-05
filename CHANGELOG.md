@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.6.1] - 2024-01-05
+
 ### Bug Fixes
 
 -   Fixes the behavior of <kbd>tab</kbd> and <kbd>shift+tab</kbd> to cycle to the next/prev row if at the end/start of a row or table.
@@ -98,7 +100,9 @@ All notable changes to this project will be documented in this file.
 
 -   Initial release. Adds DataTable and ArrowBackend, which is 1000x faster for datasets of 500k records or more.
 
-[Unreleased]: https://github.com/tconbeer/textual-fastdatatable/compare/0.6.0...HEAD
+[Unreleased]: https://github.com/tconbeer/textual-fastdatatable/compare/0.6.1...HEAD
+
+[0.6.1]: https://github.com/tconbeer/textual-fastdatatable/compare/0.6.0...0.6.1
 
 [0.6.0]: https://github.com/tconbeer/textual-fastdatatable/compare/0.5.1...0.6.0
 
