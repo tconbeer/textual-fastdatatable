@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.6.2] - 2024-01-08
+
 ### Bug Fixes
 
 -   Adds the tzdata package as a dependency for Windows installs, since Windows does not ship with a built-in tzdata database.
@@ -104,7 +106,9 @@ All notable changes to this project will be documented in this file.
 
 -   Initial release. Adds DataTable and ArrowBackend, which is 1000x faster for datasets of 500k records or more.
 
-[Unreleased]: https://github.com/tconbeer/textual-fastdatatable/compare/0.6.1...HEAD
+[Unreleased]: https://github.com/tconbeer/textual-fastdatatable/compare/0.6.2...HEAD
+
+[0.6.2]: https://github.com/tconbeer/textual-fastdatatable/compare/0.6.1...0.6.2
 
 [0.6.1]: https://github.com/tconbeer/textual-fastdatatable/compare/0.6.0...0.6.1
 
