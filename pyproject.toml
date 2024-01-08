@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "textual-fastdatatable"
-version = "0.6.1"
+version = "0.6.2"
 description = "A performance-focused reimplementation of Textual's DataTable widget, with a pluggable data storage backend."
 authors = ["Ted Conbeer <tconbeer@users.noreply.github.com>"]
 license = "MIT"
