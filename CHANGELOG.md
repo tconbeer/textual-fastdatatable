@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Bug Fixes
+
+-   Adds the tzdata package as a dependency for Windows installs, since Windows does not ship with a built-in tzdata database.
+
 ## [0.6.1] - 2024-01-05
 
 ### Bug Fixes

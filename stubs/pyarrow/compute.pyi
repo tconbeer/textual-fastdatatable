@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any, Callable, Literal
 
 from . import DataType, MemoryPool, Scalar, _PandasConvertible
@@ -41,4 +42,14 @@ def register_scalar_function(
 ) -> None: ...
 def call_function(
     function_name: str, target: list[_PandasConvertible]
+) -> _PandasConvertible: ...
+def assume_timezone(
+    timestamps: _PandasConvertible | Scalar | datetime,
+    /,
+    timezone: str,
+    *,
+    ambiguous: Literal["raise", "earliest", "latest"] = "raise",
+    nonexistent: Literal["raise", "earliest", "latest"] = "raise",
+    options: Any | None = None,
+    memory_pool: MemoryPool | None = None,
 ) -> _PandasConvertible: ...
