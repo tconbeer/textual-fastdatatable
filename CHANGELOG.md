@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.6.3] - 2024-01-09
+
 ### Bug Fixes
 
 -   Widens acceptable types for create_backend to accept a sequence of any iterable, not just iterables that are instances of typing.Iterable.
@@ -110,7 +112,9 @@ All notable changes to this project will be documented in this file.
 
 -   Initial release. Adds DataTable and ArrowBackend, which is 1000x faster for datasets of 500k records or more.
 
-[Unreleased]: https://github.com/tconbeer/textual-fastdatatable/compare/0.6.2...HEAD
+[Unreleased]: https://github.com/tconbeer/textual-fastdatatable/compare/0.6.3...HEAD
+
+[0.6.3]: https://github.com/tconbeer/textual-fastdatatable/compare/0.6.2...0.6.3
 
 [0.6.2]: https://github.com/tconbeer/textual-fastdatatable/compare/0.6.1...0.6.2
 
