@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Bug Fixes
+
+-   Widens acceptable types for create_backend to accept a sequence of any iterable, not just iterables that are instances of typing.Iterable.
+
 ## [0.6.2] - 2024-01-08
 
 ### Bug Fixes

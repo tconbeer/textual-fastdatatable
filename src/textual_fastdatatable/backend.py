@@ -42,7 +42,7 @@ def create_backend(
         return ArrowBackend.from_parquet(data, max_rows=max_rows)
     elif isinstance(data, Sequence) and not data:
         return ArrowBackend(pa.table([]), max_rows=max_rows)
-    elif isinstance(data, Sequence) and isinstance(data[0], Iterable):
+    elif isinstance(data, Sequence) and _is_iterable(data[0]):
         return ArrowBackend.from_records(data, max_rows=max_rows, has_header=has_header)
     elif (
         isinstance(data, Mapping)
@@ -55,6 +55,15 @@ def create_backend(
             f"Cannot automatically create backend for data of type: {type(data)}. "
             f"Data must be of type: {AutoBackendType}."
         )
+
+
+def _is_iterable(item: Any) -> bool:
+    try:
+        iter(item)
+    except TypeError:
+        return False
+    else:
+        return True
 
 
 class DataTableBackend(ABC):
