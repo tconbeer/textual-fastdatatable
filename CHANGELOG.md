@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Breaking Changes
+
+-   Removes the NumpyBackend ([#78](https://github.com/tconbeer/textual-fastdatatable/issues/78)).
+
 ## [0.6.3] - 2024-01-09
 
 ### Bug Fixes

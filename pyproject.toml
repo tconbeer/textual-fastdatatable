@@ -25,12 +25,12 @@ tzdata = {version = ">=2023", markers = "sys_platform == 'win32'"} # arrow times
 pre-commit = "^3.3.1"
 textual-dev = "^1.0.1"
 pandas = { version="^2.1.1", python=">=3.9,<3.13" }
-numpy = { version="*", python=">=3.9,<3.13" }
+numpy = { version="^1", python=">=3.9,<3.13" }
 pyinstrument = "^4.6.0"
 
 [tool.poetry.group.static.dependencies]
 black = "^23.3.0"
-ruff = ">=0.0.285"
+ruff = "^0.2.0"
 mypy = "^1.2.0"
 pandas-stubs = { version="^2.1.1", python=">=3.9,<3.13" }
 
@@ -41,8 +41,10 @@ pytest-textual-snapshot = ">=0.4.0"
 
 
 [tool.ruff]
-select = ["A", "B", "E", "F", "I"]
 target-version = "py38"
+
+[tool.ruff.lint]
+select = ["A", "B", "E", "F", "I"]
 
 [tool.mypy]
 python_version = "3.8"
