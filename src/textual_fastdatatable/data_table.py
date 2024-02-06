@@ -38,11 +38,11 @@ from rich.segment import Segment
 from rich.style import Style
 from rich.text import Text, TextType
 from textual import events, on
-from textual._cache import LRUCache
 from textual._segment_tools import line_crop
 from textual._two_way_dict import TwoWayDict
 from textual._types import SegmentLines
 from textual.binding import Binding, BindingType
+from textual.cache import LRUCache
 from textual.color import Color
 from textual.coordinate import Coordinate
 from textual.geometry import Region, Size, Spacing, clamp

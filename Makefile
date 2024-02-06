@@ -17,7 +17,7 @@ serve:
 
 .PHONY: profile
 profile:
-	pyinstrument -r html -o profile.html "src/scripts/run_numpy_wide.py"
+	pyinstrument -r html -o profile.html "src/scripts/run_arrow_wide.py"
 
 .PHONY: benchmark
 benchmark:

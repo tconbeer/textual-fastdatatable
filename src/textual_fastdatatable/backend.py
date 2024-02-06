@@ -5,19 +5,11 @@ from contextlib import suppress
 from pathlib import Path
 from typing import Any, Dict, Iterable, Literal, Mapping, Sequence, Union
 
-import numpy as np
 import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.lib as pl
 import pyarrow.parquet as pq
 import pyarrow.types as pt
-from numpy.core.records import (
-    array as np_recarray,
-)
-from numpy.core.records import (
-    fromrecords as np_recarray_fromrecords,
-)
-from numpy.lib.recfunctions import rec_append_fields
 
 AutoBackendType = Union[
     pa.Table,
@@ -376,124 +368,3 @@ class ArrowBackend(DataTableBackend):
 
             arr = pc.call_function(udf_name, [arr])
         return arr.fill_null("")
-
-
-class NumpyBackend(DataTableBackend):
-    def __init__(self, data: Sequence[tuple], max_rows: int | None = None) -> None:
-        if data:
-            self.data = np_recarray_fromrecords(data)
-            self._source_row_count = len(self.data)
-            if max_rows is not None and max_rows < self._source_row_count:
-                self.data = self.data[0:max_rows]
-            self._column_content_widths: list[int] = []
-        else:
-            self.data = np.recarray(shape=(0, 0), formats=["f8"])
-            self._column_content_widths = [0]
-
-    @property
-    def source_row_count(self) -> int:
-        return self._source_row_count
-
-    @property
-    def row_count(self) -> int:
-        return len(self.data)
-
-    @property
-    def column_count(self) -> int:
-        return len(self.columns)
-
-    @property
-    def columns(self) -> tuple[str, ...]:
-        """
-        A list of column labels
-        """
-        names = self.data.dtype.names
-        if names is None:
-            return tuple()
-        else:
-            return names
-
-    @property
-    def column_content_widths(self) -> list[int]:
-        """
-        A list of integers corresponding to the widest utf8 string length
-        of any data in each column.
-        """
-        if not self._column_content_widths:
-            self._column_content_widths = [
-                int(max(np.char.str_len(self.data[col].astype("<U255")), default=0))
-                for col in self.columns
-            ]
-        return self._column_content_widths
-
-    def get_row_at(self, index: int) -> tuple[Any, ...]:
-        if index < 0:
-            raise IndexError("Cannot use negative indicies")
-        return tuple(self.data[index])
-
-    def get_column_at(self, index: int) -> list[Any]:
-        col_name = self.columns[index]
-        return list(self.data[col_name])
-
-    def get_cell_at(self, row_index: int, column_index: int) -> Any:
-        return self.data[row_index][column_index]
-
-    def append_column(self, label: str, default: Any | None = None) -> int:
-        """
-        Returns column index
-        """
-        idx = self.column_count
-        if default is not None:
-            data = np.full(self.row_count, fill_value=default)
-        else:
-            data = np.full(self.row_count, fill_value=np.nan)
-        self.data = rec_append_fields(self.data, names=label, data=data)
-        self._column_content_widths = []
-        return idx
-
-    def append_rows(self, records: Iterable[Iterable[Any]]) -> list[int]:
-        """
-        Returns new row indicies
-        """
-        tuples = [tuple(row) for row in records]
-        old_len = self.row_count
-        new_data = np_recarray_fromrecords(tuples)
-        self.data = np_recarray(np.append(self.data, new_data, axis=0))
-        self._column_content_widths = []
-        return list(range(old_len, self.row_count))
-
-    def drop_row(self, row_index: int) -> None:
-        self.data = np_recarray(np.delete(self.data, row_index, axis=0))
-        self._column_content_widths = []
-
-    def update_cell(self, row_index: int, column_index: int, value: Any) -> None:
-        """
-        Raises IndexError if bad indicies
-        """
-        try:
-            self.data[row_index][column_index] = value
-            assert self.data[row_index][column_index] == value
-        except (ValueError, AssertionError):
-            # cast column to a string and try again
-            types = self.data.dtype.descr
-            types[column_index] = (types[column_index][0], "<U255")
-            new_array = self.data.astype(types)
-            new_array[row_index][column_index] = value
-            self.data = np_recarray(new_array)
-        self._column_content_widths = []
-
-    def sort(
-        self, by: list[tuple[str, Literal["ascending", "descending"]]] | str
-    ) -> None:
-        """
-        by: str sorts table by the data in the column with that name (asc).
-        by: list[tuple] sorts the table by the named column(s) with the directions
-            indicated.
-        """
-        if isinstance(by, str):
-            self.data.sort(axis=0, kind="stable", order=by)
-        else:
-            for field, direction in reversed(by):
-                self.data.sort(axis=0, kind="stable", order=field)
-                if direction == "descending":
-                    self.data = np_recarray(np.flip(self.data))
