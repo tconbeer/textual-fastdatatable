@@ -7,10 +7,13 @@ class TableApp(App, inherit_bindings=False):
     BINDINGS = [("ctrl+q", "quit", "Quit")]
 
     def compose(self) -> ComposeResult:
-        backend = ArrowBackend.from_parquet("./tests/data/lap_times_538121.parquet")
-        yield DataTable(backend=backend, cursor_type="row", max_column_content_width=5)
+        backend = ArrowBackend.from_parquet("./tests/data/lap_times_100000.parquet")
+        yield DataTable(backend=backend, cursor_type="range")
 
 
 if __name__ == "__main__":
+    import locale
+
+    locale.setlocale(locale.LC_ALL, "")
     app = TableApp()
     app.run()

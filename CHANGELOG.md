@@ -8,6 +8,10 @@ All notable changes to this project will be documented in this file.
 
 -   Removes the NumpyBackend ([#78](https://github.com/tconbeer/textual-fastdatatable/issues/78)).
 
+### Features
+
+-   Values are now formatted based on their type. Numbers have separators based on the locale, and numbers, dates/times/etc., and bools are right-aligned ([#70](https://github.com/tconbeer/textual-fastdatatable/issues/70)).
+
 ## [0.6.3] - 2024-01-09
 
 ### Bug Fixes
