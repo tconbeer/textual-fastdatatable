@@ -201,3 +201,12 @@ def test_timestamp_with_tz() -> None:
     tab = pa.table([arr], names=["created_at"])
     backend = ArrowBackend(data=tab)
     assert backend.column_content_widths == [29]
+
+
+def test_mixed_types() -> None:
+    data = [(1000,), ("hi",)]
+    backend = ArrowBackend.from_records(records=data)
+    assert backend
+    assert backend.row_count == 2
+    assert backend.get_row_at(0) == ["1000"]
+    assert backend.get_row_at(1) == ["hi"]

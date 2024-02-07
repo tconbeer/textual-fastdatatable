@@ -12,6 +12,10 @@ All notable changes to this project will be documented in this file.
 
 -   Values are now formatted based on their type. Numbers have separators based on the locale, and numbers, dates/times/etc., and bools are right-aligned ([#70](https://github.com/tconbeer/textual-fastdatatable/issues/70)).
 
+### Bug Fixes
+
+-   Fixes a crash from initializing a table `from_records` or `from_pydict` with mixed (widening) types in one column.
+
 ## [0.6.3] - 2024-01-09
 
 ### Bug Fixes
