@@ -288,9 +288,9 @@ class DataTable(ScrollView, can_focus=True):
     """The coordinate of the `DataTable` that is being hovered."""
 
     class DataLoadError(Message):
-        def __init__(self, exception: Exception) -> None:
+        def __init__(self, error: Exception) -> None:
             super().__init__()
-            self.exception = exception
+            self.error = error
 
     class CellHighlighted(Message):
         """Posted when the cursor moves to highlight a new cell.
