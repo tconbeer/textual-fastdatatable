@@ -206,7 +206,7 @@ class ArrowBackend(DataTableBackend):
     ) -> "ArrowBackend":
         try:
             tbl = pa.Table.from_pydict(dict(data))
-        except pl.ArrowInvalid:
+        except (pl.ArrowInvalid, pl.ArrowTypeError):
             # one or more fields has mixed types, like int and
             # string. Cast all to string for safety
             new_data = {k: [str(val) for val in v] for k, v in data.items()}

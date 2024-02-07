@@ -14,7 +14,7 @@ All notable changes to this project will be documented in this file.
 
 ### Bug Fixes
 
--   Fixes a crash from initializing a table `from_records` or `from_pydict` with mixed (widening) types in one column.
+-   Fixes bug that caused either a crash or an empty table from initializing a table `from_records` or `from_pydict` with mixed (widening or narrowing) types in one column.
 
 ## [0.6.3] - 2024-01-09
 
