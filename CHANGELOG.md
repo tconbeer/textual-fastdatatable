@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.7.0] - 2024-02-07
+
 ### Breaking Changes
 
 -   Removes the NumpyBackend ([#78](https://github.com/tconbeer/textual-fastdatatable/issues/78)).
@@ -124,7 +126,9 @@ All notable changes to this project will be documented in this file.
 
 -   Initial release. Adds DataTable and ArrowBackend, which is 1000x faster for datasets of 500k records or more.
 
-[Unreleased]: https://github.com/tconbeer/textual-fastdatatable/compare/0.6.3...HEAD
+[Unreleased]: https://github.com/tconbeer/textual-fastdatatable/compare/0.7.0...HEAD
+
+[0.7.0]: https://github.com/tconbeer/textual-fastdatatable/compare/0.6.3...0.7.0
 
 [0.6.3]: https://github.com/tconbeer/textual-fastdatatable/compare/0.6.2...0.6.3
 
