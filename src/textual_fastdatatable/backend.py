@@ -10,6 +10,9 @@ import pyarrow.compute as pc
 import pyarrow.lib as pl
 import pyarrow.parquet as pq
 import pyarrow.types as pt
+from rich.console import Console
+
+from textual_fastdatatable.formatter import measure_width
 
 AutoBackendType = Union[
     pa.Table,
@@ -167,7 +170,7 @@ class ArrowBackend(DataTableBackend):
             self.data = data.slice(offset=0, length=max_rows)
         else:
             self.data = data
-        self._string_data: pa.Table | None = None
+        self._console = Console()
         self._column_content_widths: list[int] = []
 
     @staticmethod
@@ -233,20 +236,10 @@ class ArrowBackend(DataTableBackend):
     @property
     def column_content_widths(self) -> list[int]:
         if not self._column_content_widths:
-            if self._string_data is None:
-                self._string_data = pa.Table.from_arrays(
-                    arrays=[
-                        self._safe_cast_arr_to_str(arr) for arr in self.data.columns
-                    ],
-                    names=self.data.column_names,
-                )
-            content_widths = [
-                pc.max(pc.utf8_length(arr).fill_null(0)).as_py()
-                for arr in self._string_data.itercolumns()
-            ]
+            measurements = [self._measure(arr) for arr in self.data.columns]
             # pc.max returns None for each column without rows; we need to return 0
             # instead.
-            self._column_content_widths = [cw or 0 for cw in content_widths]
+            self._column_content_widths = [cw or 0 for cw in measurements]
 
         return self._column_content_widths
 
@@ -271,13 +264,8 @@ class ArrowBackend(DataTableBackend):
             arr = arr.fill_null(str(default))
 
         self.data = self.data.append_column(label, arr)
-        if self._string_data is not None:
-            self._string_data = self._string_data.append_column(
-                label,
-                arr,
-            )
         if self._column_content_widths:
-            self._column_content_widths.append(len(str(default)))
+            self._column_content_widths.append(measure_width(default, self._console))
         return self.data.num_columns - 1
 
     def append_rows(self, records: Iterable[Iterable[Any]]) -> list[int]:
@@ -313,15 +301,10 @@ class ArrowBackend(DataTableBackend):
             self.data.column_names[column_index],
             pa.array(pycolumn, type=new_type),
         )
-        if self._string_data is not None:
-            self._string_data = self._string_data.set_column(
-                column_index,
-                self.data.column_names[column_index],
-                pa.array(pycolumn, type=pa.string()),
-            )
         if self._column_content_widths:
             self._column_content_widths[column_index] = max(
-                len(str(value)), self._column_content_widths[column_index]
+                measure_width(value, self._console),
+                self._column_content_widths[column_index],
             )
 
     def sort(
@@ -335,17 +318,30 @@ class ArrowBackend(DataTableBackend):
         self.data = self.data.sort_by(by)
 
     def _reset_content_widths(self) -> None:
-        self._string_data = None
         self._column_content_widths = []
 
-    def _safe_cast_arr_to_str(
-        self, arr: pa._PandasConvertible
-    ) -> pa._PandasConvertible:
-        """
-        Safe here means avoiding type errors casting to str; ironically that means
-        setting PyArrow safe=false. If PyArrow can't do the cast (as with structs
-        and other nested types), we fall back to Python.
-        """
+    def _measure(self, arr: pa._PandasConvertible) -> int:
+        # with some types we can measure the width more efficiently
+        if pt.is_boolean(arr.type):
+            return 7
+        elif (
+            pt.is_integer(arr.type)
+            or pt.is_floating(arr.type)
+            or pt.is_decimal(arr.type)
+        ):
+            col_max = pc.max(arr.fill_null(0)).as_py()
+            col_min = pc.min(arr.fill_null(0)).as_py()
+            return max([measure_width(el, self._console) for el in [col_max, col_min]])
+        elif pt.is_temporal(arr.type):
+            try:
+                value = arr.drop_null()[0].as_py()
+            except IndexError:
+                return 0
+            else:
+                return measure_width(value, self._console)
+
+        # for everything else, we need to compute it
+
         try:
             arr = arr.cast(
                 pa.string(),
@@ -367,4 +363,5 @@ class ArrowBackend(DataTableBackend):
                 )
 
             arr = pc.call_function(udf_name, [arr])
-        return arr.fill_null("")
+        width: int = pc.max(pc.utf8_length(arr.fill_null("")).fill_null(0)).as_py()
+        return width

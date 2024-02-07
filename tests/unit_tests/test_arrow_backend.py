@@ -200,4 +200,4 @@ def test_timestamp_with_tz() -> None:
     arr = pa.array([dt, dt, dt])
     tab = pa.table([arr], names=["created_at"])
     backend = ArrowBackend(data=tab)
-    assert backend.column_content_widths == [25]
+    assert backend.column_content_widths == [29]

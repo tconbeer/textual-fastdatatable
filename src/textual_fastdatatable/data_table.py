@@ -25,15 +25,13 @@
 from __future__ import annotations
 
 import functools
-from dataclasses import dataclass
 from itertools import chain, zip_longest
-from typing import Any, ClassVar, Iterable, NamedTuple, Tuple, Union, cast
+from typing import Any, ClassVar, Iterable, NamedTuple, Tuple, Union
 
 import rich.repr
 from rich.console import RenderableType
 from rich.padding import Padding
 from rich.pretty import Pretty
-from rich.protocol import is_renderable
 from rich.segment import Segment
 from rich.style import Style
 from rich.text import Text, TextType
@@ -55,7 +53,9 @@ from textual.strip import Strip
 from textual.widget import PseudoClasses
 from typing_extensions import Literal, Self
 
-from textual_fastdatatable import DataTableBackend, create_backend
+from textual_fastdatatable.backend import DataTableBackend, create_backend
+from textual_fastdatatable.column import Column
+from textual_fastdatatable.formatter import cell_formatter, measure_width
 
 CursorType = Literal["cell", "range", "row", "column", "none"]
 """The valid types of cursors for 
@@ -93,8 +93,6 @@ RowCacheKey = Tuple[
 ]
 CellType = RenderableType
 
-CELL_X_PADDING = 2
-
 
 class CellDoesNotExist(Exception):
     """The cell key/index was invalid.
@@ -111,49 +109,6 @@ class RowDoesNotExist(Exception):
 class ColumnDoesNotExist(Exception):
     """Raised when the column index or column key provided does not exist
     in the DataTable (e.g. out of bounds index, invalid key)"""
-
-
-def default_cell_formatter(obj: object) -> RenderableType:
-    """Convert a cell into a Rich renderable for display.
-
-    Args:
-        obj: Data for a cell.
-
-    Returns:
-        A renderable to be displayed which represents the data.
-    """
-    if isinstance(obj, str):
-        return Text.from_markup(obj)
-    if isinstance(obj, float):
-        return f"{obj:.2f}"
-    if not is_renderable(obj):
-        return str(obj)
-    return cast(RenderableType, obj)
-
-
-@dataclass
-class Column:
-    """Metadata for a column in the DataTable."""
-
-    label: Text
-    width: int = 0
-    content_width: int = 0
-    auto_width: bool = False
-    max_content_width: int | None = None
-
-    @property
-    def render_width(self) -> int:
-        """Width in cells, required to render a column."""
-        # +2 is to account for space padding either side of the cell
-        if self.auto_width and self.max_content_width is not None:
-            return (
-                min(max(len(self.label), self.content_width), self.max_content_width)
-                + CELL_X_PADDING
-            )
-        elif self.auto_width:
-            return max(len(self.label), self.content_width) + CELL_X_PADDING
-        else:
-            return self.width + CELL_X_PADDING
 
 
 class RowRenderables(NamedTuple):
@@ -691,7 +646,7 @@ class DataTable(ScrollView, can_focus=True):
         background color."""
         self.cursor_type = cursor_type
         """The type of cursor of the `DataTable`."""
-        self.null_rep = null_rep
+        self.null_rep = Text.from_markup(null_rep)
         """The string used to represent missing data (None or null)"""
 
     @property
@@ -1169,32 +1124,6 @@ class DataTable(ScrollView, can_focus=True):
     def _row_label_column_width(self) -> int:
         """The render width of the column containing row labels"""
         return self._label_column.render_width if self._should_render_row_labels else 0
-
-    def _update_column_widths(self, updated_cells: set[Any]) -> None:
-        """Update the widths of the columns based on the newly updated cell widths."""
-        raise NotImplementedError("No updates allowed.")
-        for row_key, column_key in updated_cells:
-            column = self.columns.get(column_key)
-            if column is None:
-                continue
-            console = self.app.console
-            label_width = measure(console, column.label, 1)
-            content_width = column.content_width
-            cell_value = self._data[row_key][column_key]
-
-            new_content_width = measure(console, default_cell_formatter(cell_value), 1)
-
-            if new_content_width < content_width:
-                cells_in_column = self.get_column(column_key)
-                cell_widths = [
-                    measure(console, default_cell_formatter(cell), 1)
-                    for cell in cells_in_column
-                ]
-                column.content_width = max([*cell_widths, label_width])
-            else:
-                column.content_width = max(new_content_width, label_width)
-
-        self._require_update_dimensions = True
 
     def _update_dimensions(self, new_rows: Iterable[int]) -> None:
         """Called to recalculate the virtual (scrollable) size.
@@ -1839,11 +1768,11 @@ class DataTable(ScrollView, can_focus=True):
             return RowRenderables(None, header_row)
 
         ordered_row = self.get_row_at(row_index)
-        empty = Text(self.null_rep)
+        empty = self.null_rep
 
         formatted_row_cells = [
-            empty if datum is None else default_cell_formatter(datum)
-            for datum, _ in zip_longest(ordered_row, range(self.column_count))
+            cell_formatter(datum, null_rep=empty, col=col)
+            for datum, col in zip_longest(ordered_row, self.ordered_columns)
         ]
         label = None
         if self._should_render_row_labels:
@@ -1874,9 +1803,11 @@ class DataTable(ScrollView, can_focus=True):
             return self.ordered_columns[column_index].label
 
         datum = self.get_cell_at(Coordinate(row=row_index, column=column_index))
-        if datum is None:
-            datum = Text(self.null_rep)
-        return default_cell_formatter(datum)
+        return cell_formatter(
+            datum,
+            null_rep=self.null_rep,
+            col=self.ordered_columns[column_index],
+        )
 
     def _render_cell(
         self,
@@ -2566,17 +2497,20 @@ class DataTable(ScrollView, can_focus=True):
 
     def _set_tooltip_from_cell_at(self, coordinate: Coordinate) -> None:
         # TODO: support row labels
-        if self.max_column_content_width is None:
-            return
         cache_key = (coordinate.row, coordinate.column, self._update_count)
         if cache_key not in self._tooltip_cache:
             if coordinate.row == -1:  # hover over header
                 raw_value = self.ordered_columns[coordinate.column].label
             else:
                 raw_value = self.get_cell_at(coordinate)
+            if raw_value is None:
+                raw_value = self.null_rep
+            measured_width = measure_width(raw_value, self.app.console)
             if (
-                self._measure_cell_content_width(raw_value)
-                > self.max_column_content_width
+                self.max_column_content_width is not None
+                and measured_width > self.max_column_content_width
+            ) or (
+                measured_width > self.ordered_columns[coordinate.column].render_width
             ):
                 if isinstance(raw_value, Text):
                     self._tooltip_cache[cache_key] = raw_value
@@ -2585,12 +2519,6 @@ class DataTable(ScrollView, can_focus=True):
             else:
                 self._tooltip_cache[cache_key] = None
         self.tooltip = self._tooltip_cache[cache_key]
-
-    def _measure_cell_content_width(self, value: Any) -> int:
-        if hasattr(value, "__rich_console__"):
-            return self.app.console.measure(value).minimum
-        else:
-            return len(str(value))
 
     def _set_selection_anchor(self, select: bool) -> None:
         if (
