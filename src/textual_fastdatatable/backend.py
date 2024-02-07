@@ -324,6 +324,8 @@ class ArrowBackend(DataTableBackend):
         # with some types we can measure the width more efficiently
         if pt.is_boolean(arr.type):
             return 7
+        elif pt.is_null(arr.type):
+            return 6
         elif (
             pt.is_integer(arr.type)
             or pt.is_floating(arr.type)
