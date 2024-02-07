@@ -204,7 +204,13 @@ class ArrowBackend(DataTableBackend):
     def from_pydict(
         cls, data: Mapping[str, Sequence[Any]], max_rows: int | None = None
     ) -> "ArrowBackend":
-        tbl = pa.Table.from_pydict(dict(data))
+        try:
+            tbl = pa.Table.from_pydict(dict(data))
+        except pl.ArrowInvalid:
+            # one or more fields has mixed types, like int and
+            # string. Cast all to string for safety
+            new_data = {k: [str(val) for val in v] for k, v in data.items()}
+            tbl = pa.Table.from_pydict(new_data)
         return cls(tbl, max_rows=max_rows)
 
     @classmethod
