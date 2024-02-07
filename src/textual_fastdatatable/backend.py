@@ -325,7 +325,7 @@ class ArrowBackend(DataTableBackend):
         if pt.is_boolean(arr.type):
             return 7
         elif pt.is_null(arr.type):
-            return 6
+            return 0
         elif (
             pt.is_integer(arr.type)
             or pt.is_floating(arr.type)
