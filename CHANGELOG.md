@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+-   Adds a `backend.source_data` property to exposue the underlying Arrow table, before slicing.
+
 ## [0.7.0] - 2024-02-07
 
 ### Breaking Changes

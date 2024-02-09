@@ -68,6 +68,14 @@ class DataTableBackend(ABC):
 
     @property
     @abstractmethod
+    def source_data(self) -> pa.Table:
+        """
+        Return the source data as an Arrow table
+        """
+        pass
+
+    @property
+    @abstractmethod
     def source_row_count(self) -> int:
         """
         The number of rows in the source data, before filtering down to max_rows
@@ -151,6 +159,8 @@ class DataTableBackend(ABC):
 
 class ArrowBackend(DataTableBackend):
     def __init__(self, data: pa.Table, max_rows: int | None = None) -> None:
+        self._source_data = data
+
         # Arrow allows duplicate field names, but a table's to_pylist() and
         # to_pydict() methods will drop duplicate-named fields!
         field_names: list[str] = []
@@ -222,6 +232,10 @@ class ArrowBackend(DataTableBackend):
     ) -> "ArrowBackend":
         pydict = cls._pydict_from_records(records, has_header)
         return cls.from_pydict(pydict, max_rows=max_rows)
+
+    @property
+    def source_data(self) -> pa.Table:
+        return self._source_data
 
     @property
     def source_row_count(self) -> int:
