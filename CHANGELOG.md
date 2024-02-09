@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.7.1] - 2024-02-09
+
 -   Adds a `backend.source_data` property to exposue the underlying Arrow table, before slicing.
 
 ## [0.7.0] - 2024-02-07
@@ -128,7 +130,9 @@ All notable changes to this project will be documented in this file.
 
 -   Initial release. Adds DataTable and ArrowBackend, which is 1000x faster for datasets of 500k records or more.
 
-[Unreleased]: https://github.com/tconbeer/textual-fastdatatable/compare/0.7.0...HEAD
+[Unreleased]: https://github.com/tconbeer/textual-fastdatatable/compare/0.7.1...HEAD
+
+[0.7.1]: https://github.com/tconbeer/textual-fastdatatable/compare/0.7.0...0.7.1
 
 [0.7.0]: https://github.com/tconbeer/textual-fastdatatable/compare/0.6.3...0.7.0
 
