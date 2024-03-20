@@ -29,7 +29,7 @@ numpy = { version="^1", python=">=3.9,<3.13" }
 pyinstrument = "^4.6.0"
 
 [tool.poetry.group.static.dependencies]
-black = "^23.3.0"
+black = ">=23.3,<25.0"
 ruff = "^0.2.0"
 mypy = "^1.2.0"
 pandas-stubs = { version="^2.1.1", python=">=3.9,<3.13" }
