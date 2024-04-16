@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+-   Adds a pin to `numpy<2.0`, since pyarrow and other deps are not compatible with v2 but don't
+    pin their own dependency correctly.
+
 ## [0.7.1] - 2024-02-09
 
 -   Adds a `backend.source_data` property to exposue the underlying Arrow table, before slicing.
