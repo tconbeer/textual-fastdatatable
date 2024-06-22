@@ -2355,8 +2355,9 @@ class DataTable(ScrollView, can_focus=True):
         """Sort the rows in the `DataTable` by one or more column keys.
 
         Args:
-            columns: One or more columns to sort by the values in.
-            reverse: If True, the sort order will be reversed.
+            by: str sorts table by the data in the column with that name (asc).
+            by: list[tuple] sorts the table by the named column(s) with the
+                directions indicated.
 
         Returns:
             The `DataTable` instance.
