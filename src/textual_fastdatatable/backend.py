@@ -22,25 +22,26 @@ import pyarrow.parquet as pq
 import pyarrow.types as pt
 from rich.console import Console
 
-try:
-    import polars as pl
-    import polars.datatypes as pld
-
-    _HAS_POLARS = True
-except ImportError:
-    _HAS_POLARS = False
-
 from textual_fastdatatable.formatter import measure_width
 
 AutoBackendType = Union[
     pa.Table,
     pa.RecordBatch,
-    pl.DataFrame,
     Path,
     str,
     Sequence[Iterable[Any]],
     Mapping[str, Sequence[Any]],
 ]
+
+try:
+    import polars as pl
+    import polars.datatypes as pld
+
+    AutoBackendType = Union[AutoBackendType, pl.DataFrame]
+
+    _HAS_POLARS = True
+except ImportError:
+    _HAS_POLARS = False
 
 
 def create_backend(
