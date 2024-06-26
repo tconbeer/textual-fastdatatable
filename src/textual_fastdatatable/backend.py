@@ -22,8 +22,13 @@ import pyarrow.parquet as pq
 import pyarrow.types as pt
 from rich.console import Console
 
-import polars as pl
-import polars.datatypes as pld
+try:
+    import polars as pl
+    import polars.datatypes as pld
+
+    _HAS_POLARS = True
+except ImportError:
+    _HAS_POLARS = False
 
 from textual_fastdatatable.formatter import measure_width
 
@@ -47,17 +52,17 @@ def create_backend(
         return ArrowBackend(data, max_rows=max_rows)
     if isinstance(data, pa.RecordBatch):
         return ArrowBackend.from_batches(data, max_rows=max_rows)
-    if isinstance(data, pl.DataFrame):
+    if isinstance(data, pl.DataFrame) and _HAS_POLARS:
         return PolarsBackend.from_dataframe(data, max_rows=max_rows)
 
     if isinstance(data, Path) or isinstance(data, str):
         data = Path(data)
         if data.suffix in [".pqt", ".parquet"]:
             return ArrowBackend.from_parquet(data, max_rows=max_rows)
-
-        return PolarsBackend.from_file_path(
-            data, max_rows=max_rows, has_header=has_header
-        )
+        if _HAS_POLARS:
+            return PolarsBackend.from_file_path(
+                data, max_rows=max_rows, has_header=has_header
+            )
     if isinstance(data, Sequence) and not data:
         return ArrowBackend(pa.table([]), max_rows=max_rows)
     if isinstance(data, Sequence) and _is_iterable(data[0]):
@@ -416,9 +421,7 @@ class ArrowBackend(DataTableBackend[pa.Table]):
         return width
 
 
-try:
-    import polars as pl
-    import polars.datatypes as pld
+if _HAS_POLARS:
 
     class PolarsBackend(DataTableBackend[pl.DataFrame]):
 
@@ -631,6 +634,3 @@ try:
                 cols = [x for x, _ in by]
                 typs = [x == "descending" for _, x in by]
             self.data = self.data.sort(cols, descending=typs)
-
-except ImportError:
-    pass
