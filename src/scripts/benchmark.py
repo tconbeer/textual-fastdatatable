@@ -5,6 +5,7 @@ from pathlib import Path
 from time import perf_counter
 
 import pandas as pd
+import polars as pl
 from textual.app import App, ComposeResult
 from textual.driver import Driver
 from textual.pilot import Pilot
@@ -12,6 +13,7 @@ from textual.types import CSSPathType
 from textual.widgets import DataTable as BuiltinDataTable
 from textual_fastdatatable import ArrowBackend
 from textual_fastdatatable import DataTable as FastDataTable
+from textual_fastdatatable.backend import PolarsBackend
 
 BENCHMARK_DATA = Path(__file__).parent.parent.parent / "tests" / "data"
 
@@ -93,9 +95,26 @@ class ArrowBackendAppFromRecords(App):
         )
         yield table
 
+class PolarsBackendApp(App):
+    TITLE = "FastDataTable (Polars from Parquet)"
+
+    def __init__(
+        self,
+        data_path: Path,
+        driver_class: type[Driver] | None = None,
+        css_path: CSSPathType | None = None,
+        watch_css: bool = False,
+    ):
+        super().__init__(driver_class, css_path, watch_css)
+        self.data_path = data_path
+
+    def compose(self) -> ComposeResult:
+        self.start = perf_counter()
+        yield FastDataTable(data=PolarsBackend.from_dataframe(pl.read_parquet(self.data_path)))
+
 
 if __name__ == "__main__":
-    app_defs = [BuiltinApp, ArrowBackendApp, ArrowBackendAppFromRecords]
+    app_defs = [BuiltinApp, ArrowBackendApp, ArrowBackendAppFromRecords, PolarsBackendApp]
     bench = [
         (f"lap_times_{n}.parquet", 3 if n <= 10000 else 1)
         for n in [100, 1000, 10000, 100000, 538121]
