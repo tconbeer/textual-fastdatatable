@@ -924,17 +924,20 @@ xml = ["lxml (>=4.9.2)"]
 
 [[package]]
 name = "pandas-stubs"
-version = "2.1.4.231227"
+version = "2.2.2.240603"
 description = "Type annotations for pandas"
 optional = false
 python-versions = ">=3.9"
 files = [
-    {file = "pandas_stubs-2.1.4.231227-py3-none-any.whl", hash = "sha256:211fc23e6ae87073bdf41dbf362c4a4d85e1e3477cb078dbac3da6c7fdaefba8"},
-    {file = "pandas_stubs-2.1.4.231227.tar.gz", hash = "sha256:3ea29ef001e9e44985f5ebde02d4413f94891ef6ec7e5056fb07d125be796c23"},
+    {file = "pandas_stubs-2.2.2.240603-py3-none-any.whl", hash = "sha256:e08ce7f602a4da2bff5a67475ba881c39f2a4d4f7fccc1cba57c6f35a379c6c0"},
+    {file = "pandas_stubs-2.2.2.240603.tar.gz", hash = "sha256:2dcc86e8fa6ea41535a4561c1f08b3942ba5267b464eff2e99caeee66f9e4cd1"},
 ]
 
 [package.dependencies]
-numpy = {version = ">=1.26.0", markers = "python_version < \"3.13\""}
+numpy = [
+    {version = ">=1.23.5", markers = "python_version >= \"3.9\" and python_version < \"3.12\""},
+    {version = ">=1.26.0", markers = "python_version >= \"3.12\" and python_version < \"3.13\""},
+]
 types-pytz = ">=2022.1.1"
 
 [[package]]
