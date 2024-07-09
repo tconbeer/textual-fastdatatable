@@ -53,7 +53,7 @@ def create_backend(
         return ArrowBackend(data, max_rows=max_rows)
     if isinstance(data, pa.RecordBatch):
         return ArrowBackend.from_batches(data, max_rows=max_rows)
-    if isinstance(data, pl.DataFrame) and _HAS_POLARS:
+    if _HAS_POLARS and isinstance(data, pl.DataFrame):
         return PolarsBackend.from_dataframe(data, max_rows=max_rows)
 
     if isinstance(data, Path) or isinstance(data, str):

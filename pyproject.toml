@@ -42,6 +42,7 @@ pandas-stubs = { version="^2.1.1", python=">=3.9,<3.13" }
 pytest = "^7.3.1"
 pytest-asyncio = ">=0.21,<0.24"
 pytest-textual-snapshot = ">=0.4.0"
+polars = ">=0.20.0"
 
 
 [tool.ruff]

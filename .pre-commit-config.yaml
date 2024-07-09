@@ -17,6 +17,7 @@ repos:
           - pytest
           - pyarrow-stubs
           - pandas-stubs
+          - polars
         exclude: "tests/snapshot_tests/"
         args:
           - "--disallow-untyped-calls"
