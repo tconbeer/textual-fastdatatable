@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+-   Fixes a crash when cell contents contained bad Rich Markdown ([tconbeer/harlequin#569](https://github.com/tconbeer/harlequin/issues/569)).
+-   Improves the appearance of data tooltips.
+
 ## [0.7.1] - 2024-02-09
 
 -   Adds a `backend.source_data` property to exposue the underlying Arrow table, before slicing.

@@ -25,6 +25,8 @@
 from __future__ import annotations
 
 import functools
+from datetime import date, datetime, time, timedelta
+from decimal import Decimal
 from itertools import chain, zip_longest
 from typing import Any, ClassVar, Iterable, NamedTuple, Tuple, Union
 
@@ -557,7 +559,9 @@ class DataTable(ScrollView, can_focus=True):
                 backend
                 if backend is not None
                 else create_backend(
-                    data, max_rows=max_rows, has_header=(column_labels is None)  # type: ignore
+                    data,  # type: ignore[arg-type]
+                    max_rows=max_rows,
+                    has_header=(column_labels is None),  # type: ignore
                 )
             )
         except (TypeError, OSError) as e:
@@ -584,9 +588,9 @@ class DataTable(ScrollView, can_focus=True):
         """Cache for individual cells."""
         self._line_cache: LRUCache[LineCacheKey, Strip] = LRUCache(1000)
         """Cache for lines within rows."""
-        self._tooltip_cache: LRUCache[
-            TooltipCacheKey, RenderableType | None
-        ] = LRUCache(1000)
+        self._tooltip_cache: LRUCache[TooltipCacheKey, RenderableType | None] = (
+            LRUCache(1000)
+        )
         """Cache for values for the tooltip"""
         # self._offset_cache: LRUCache[int, list[tuple[RowKey, int]]] = LRUCache(1)
         """Cached y_offset - key is update_count - see y_offsets property for more
@@ -2424,7 +2428,9 @@ class DataTable(ScrollView, can_focus=True):
             # TODO: support row labels.
             # row = self.ordered_rows[row_index]
             row_message = DataTable.RowLabelSelected(
-                self, row_index, label=Text()  # label=row.label
+                self,
+                row_index,
+                label=Text(),  # label=row.label
             )
             self.post_message(row_message)
         elif self.show_cursor and self.cursor_type != "none":
@@ -2499,9 +2505,10 @@ class DataTable(ScrollView, can_focus=True):
     def _set_tooltip_from_cell_at(self, coordinate: Coordinate) -> None:
         # TODO: support row labels
         cache_key = (coordinate.row, coordinate.column, self._update_count)
+        column = self.ordered_columns[coordinate.column]
         if cache_key not in self._tooltip_cache:
             if coordinate.row == -1:  # hover over header
-                raw_value = self.ordered_columns[coordinate.column].label
+                raw_value = column.label
             else:
                 raw_value = self.get_cell_at(coordinate)
             if raw_value is None:
@@ -2510,11 +2517,16 @@ class DataTable(ScrollView, can_focus=True):
             if (
                 self.max_column_content_width is not None
                 and measured_width > self.max_column_content_width
-            ) or (
-                measured_width > self.ordered_columns[coordinate.column].render_width
-            ):
+            ) or (measured_width > column.render_width):
                 if isinstance(raw_value, Text):
                     self._tooltip_cache[cache_key] = raw_value
+                elif isinstance(
+                    raw_value,
+                    (str, float, Decimal, int, datetime, time, date, timedelta),
+                ):
+                    self._tooltip_cache[cache_key] = cell_formatter(
+                        raw_value, null_rep=self.null_rep, col=column
+                    )
                 else:
                     self._tooltip_cache[cache_key] = Pretty(raw_value)
             else:

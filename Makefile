@@ -1,14 +1,14 @@
 .PHONY: check
 check:
-	black .
+	ruff format .
 	pytest
-	ruff . --fix
+	ruff check . --fix
 	mypy
 
 .PHONY: lint
 lint:
-	black .
-	ruff . --fix
+	ruff format .
+	ruff check . --fix
 	mypy
 
 .PHONY: serve

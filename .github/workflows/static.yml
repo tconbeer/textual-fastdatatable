@@ -48,6 +48,6 @@ jobs:
       - name: Run analysis
         run: |
           source .venv/bin/activate
-          black . --check
-          ruff .
+          ruff format --check
+          ruff check .
           mypy
