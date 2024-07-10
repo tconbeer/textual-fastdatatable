@@ -6,6 +6,8 @@ from typing import cast
 
 from rich.align import Align
 from rich.console import Console, RenderableType
+from rich.errors import MarkupError
+from rich.markup import escape
 from rich.protocol import is_renderable
 from rich.text import Text
 
@@ -29,7 +31,11 @@ def cell_formatter(
     if obj is None:
         return Align(null_rep, align="center")
     elif isinstance(obj, str):
-        return Text.from_markup(obj)
+        try:
+            rich_text: Text | str = Text.from_markup(obj)
+        except MarkupError:
+            rich_text = escape(obj)
+        return rich_text
     elif isinstance(obj, bool):
         return Align(
             f"[dim]{'✓' if obj else 'X'}[/] {obj}{' ' if obj else ''}",
