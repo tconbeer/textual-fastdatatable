@@ -18,8 +18,12 @@ build-backend = "poetry.core.masonry.api"
 python = "^3.8"
 textual = ">=0.41.0"
 pyarrow = ">=7.0.0"
+polars = { version = ">=0.20.0", optional = true } 
 pytz = {version = ">=2023,<2025", python = "<3.9.0"} # arrow timestamptz support py<3.9
 tzdata = {version = ">=2023", markers = "sys_platform == 'win32'"} # arrow timestamptz support on windows
+
+[tool.poetry.extras]
+polars = ["polars"]
 
 [tool.poetry.group.dev.dependencies]
 pre-commit = "^3.3.1"
@@ -37,6 +41,7 @@ pandas-stubs = { version="^2.1.1", python=">=3.9,<3.13" }
 pytest = "^7.3.1"
 pytest-asyncio = ">=0.21,<0.24"
 pytest-textual-snapshot = ">=0.4.0"
+polars = ">=0.20.0"
 
 
 [tool.ruff]
