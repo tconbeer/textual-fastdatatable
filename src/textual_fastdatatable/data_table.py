@@ -1473,9 +1473,9 @@ class DataTable(ScrollView, can_focus=True):
         """
         if self.backend is None:
             self.backend = create_backend(list(rows))
-            indicies = list(range(self.row_count))
+            indices = list(range(self.row_count))
         else:
-            indicies = self.backend.append_rows(rows)
+            indices = self.backend.append_rows(rows)
         self._require_update_dimensions = True
         self.cursor_coordinate = self.cursor_coordinate
 
@@ -1490,7 +1490,7 @@ class DataTable(ScrollView, can_focus=True):
 
         self._update_count += 1
         self.check_idle()
-        return indicies
+        return indices
 
     def remove_row(self, row_index: int) -> None:
         """Remove a row (identified by a key) from the DataTable.

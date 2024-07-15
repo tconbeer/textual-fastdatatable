@@ -171,7 +171,7 @@ class DataTableBackend(ABC, Generic[_TableTypeT]):
     @abstractmethod
     def append_rows(self, records: Iterable[Iterable[Any]]) -> list[int]:
         """
-        Returns new row indicies
+        Returns new row indices
         """
         pass
 
@@ -182,7 +182,7 @@ class DataTableBackend(ABC, Generic[_TableTypeT]):
     @abstractmethod
     def update_cell(self, row_index: int, column_index: int, value: Any) -> None:
         """
-        Raises IndexError if bad indicies
+        Raises IndexError if bad indices
         """
 
     @abstractmethod
@@ -336,7 +336,7 @@ class ArrowBackend(DataTableBackend[pa.Table]):
 
     def append_rows(self, records: Iterable[Iterable[Any]]) -> list[int]:
         rows = list(records)
-        indicies = list(range(self.row_count, self.row_count + len(rows)))
+        indices = list(range(self.row_count, self.row_count + len(rows)))
         records_with_headers = [self.data.column_names, *rows]
         pydict = self._pydict_from_records(records_with_headers, has_header=True)
         old_rows = self.data.to_batches()
@@ -346,7 +346,7 @@ class ArrowBackend(DataTableBackend[pa.Table]):
         )
         self.data = pa.Table.from_batches([*old_rows, new_rows])
         self._reset_content_widths()
-        return indicies
+        return indices
 
     def drop_row(self, row_index: int) -> None:
         if row_index < 0 or row_index >= self.row_count:
@@ -557,10 +557,10 @@ if _HAS_POLARS:
             rows_to_add = pl.from_dicts(
                 [dict(zip(self.data.columns, row)) for row in records]
             )
-            indicies = list(range(self.row_count, self.row_count + len(rows_to_add)))
+            indices = list(range(self.row_count, self.row_count + len(rows_to_add)))
             self.data = pl.concat([self.data, rows_to_add])
             self._reset_content_widths()
-            return indicies
+            return indices
 
         def append_column(self, label: str, default: Any | None = None) -> int:
             """
