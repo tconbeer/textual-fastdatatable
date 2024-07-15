@@ -126,8 +126,12 @@ class DataTableBackend(ABC, Generic[_TableTypeT]):
         pass
 
     @property
+    @abstractmethod
     def column_count(self) -> int:
-        return len(self.columns)
+        """
+        The number of columns
+        """
+        pass
 
     @property
     @abstractmethod
@@ -505,11 +509,11 @@ if _HAS_POLARS:
 
         @property
         def row_count(self) -> int:
-            return len(self.data)
+            return self.data.height
 
         @property
         def column_count(self) -> int:
-            return len(self.data.columns)
+            return self.data.width
 
         @property
         def columns(self) -> Sequence[str]:
