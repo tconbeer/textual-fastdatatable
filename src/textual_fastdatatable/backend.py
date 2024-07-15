@@ -293,11 +293,11 @@ class ArrowBackend(DataTableBackend[pa.Table]):
 
     @property
     def column_count(self) -> int:
-        return self.data.num_columns
+        return self.data.num_columns - 1
 
     @property
     def columns(self) -> Sequence[str]:
-        return self.data.column_names
+        return self.data.column_names[1:]
 
     @property
     def column_content_widths(self) -> list[int]:
@@ -310,14 +310,14 @@ class ArrowBackend(DataTableBackend[pa.Table]):
         return self._column_content_widths
 
     def get_row_at(self, index: int) -> Sequence[Any]:
-        row: Dict[str, Any] = self.data.slice(index, length=1).to_pylist()[0]
+        row: Dict[str, Any] = self.data.select(self.columns).slice(index, length=1).to_pylist()[0]
         return list(row.values())
 
     def get_column_at(self, column_index: int) -> Sequence[Any]:
-        return self.data[column_index].to_pylist()
+        return self.data[column_index+1].to_pylist()
 
     def get_cell_at(self, row_index: int, column_index: int) -> Any:
-        return self.data[column_index][row_index].as_py()
+        return self.data[column_index+1][row_index].as_py()
 
     def append_column(self, label: str, default: Any | None = None) -> int:
         """
@@ -332,7 +332,7 @@ class ArrowBackend(DataTableBackend[pa.Table]):
         self.data = self.data.append_column(label, arr)
         if self._column_content_widths:
             self._column_content_widths.append(measure_width(default, self._console))
-        return self.data.num_columns - 1
+        return self.column_count - 1
 
     def append_rows(self, records: Iterable[Iterable[Any]]) -> list[int]:
         rows = list(records)
@@ -513,37 +513,37 @@ if _HAS_POLARS:
 
         @property
         def column_count(self) -> int:
-            return self.data.width
+            return self.data.width - 1
 
         @property
         def columns(self) -> Sequence[str]:
-            return self.data.columns
+            return self.data.columns[1:]
 
         def get_row_at(self, index: int) -> Sequence[Any]:
-            if index < 0 or index >= len(self.data):
+            if index < 0 or index >= self.row_count:
                 raise IndexError(
-                    f"Cannot get row={index} in table with {len(self.data)} rows and {len(self.data.columns)} cols"
+                    f"Cannot get row={index} in table with {self.row_count} rows and {self.column_count} cols"
                 )
-            return list(self.data.slice(index, length=1).to_dicts()[0].values())
+            return list(self.data.select(self.columns).slice(index, length=1).to_dicts()[0].values())
 
         def get_column_at(self, column_index: int) -> Sequence[Any]:
-            if column_index < 0 or column_index >= len(self.data.columns):
+            if column_index < 0 or column_index >= self.column_count:
                 raise IndexError(
-                    f"Cannot get column={column_index} in table with {len(self.data)} rows and {len(self.data.columns)} cols"
+                    f"Cannot get column={column_index} in table with {self.row_count} rows and {self.column_count} cols"
                 )
-            return list(self.data.to_series(column_index))
+            return list(self.data.to_series(column_index+1))
 
         def get_cell_at(self, row_index: int, column_index: int) -> Any:
             if (
-                row_index >= len(self.data)
+                row_index >= self.row_count
                 or row_index < 0
                 or column_index < 0
-                or column_index >= len(self.data.columns)
+                or column_index >= self.column_count
             ):
                 raise IndexError(
-                    f"Cannot get cell at row={row_index} col={column_index} in table with {len(self.data)} rows and {len(self.data.columns)} cols"
+                    f"Cannot get cell at row={row_index} col={column_index} in table with {self.row_count} rows and {self.column_count} cols"
                 )
-            return self.data.to_series(column_index)[row_index]
+            return self.data.to_series(column_index+1)[row_index]
 
         def drop_row(self, row_index: int) -> None:
             if row_index < 0 or row_index >= self.row_count:
@@ -575,7 +575,7 @@ if _HAS_POLARS:
                 self._column_content_widths.append(
                     measure_width(default, self._console)
                 )
-            return len(self.data.columns) - 1
+            return self.column_count - 1
 
         def _reset_content_widths(self) -> None:
             self._column_content_widths = []
