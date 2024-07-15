@@ -355,7 +355,6 @@ class ArrowBackend(DataTableBackend[pa.Table]):
         below = self.data.slice(row_index + 1).to_batches()
         self.data = pa.Table.from_batches([*above, *below])
         self._reset_content_widths()
-        pass
 
     def update_cell(self, row_index: int, column_index: int, value: Any) -> None:
         column = self.data.column(column_index)
