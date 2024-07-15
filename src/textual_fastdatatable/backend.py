@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import uuid
 from abc import ABC, abstractmethod
 from contextlib import suppress
 from pathlib import Path
@@ -15,6 +16,7 @@ from typing import (
     Union,
 )
 
+import numpy as np
 import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.lib as pal
@@ -213,6 +215,13 @@ class ArrowBackend(DataTableBackend[pa.Table]):
             self.data = data.slice(offset=0, length=max_rows)
         else:
             self.data = data
+
+        self._index_col = f"_index_{str(uuid.uuid4())[-12:]}"
+        self.data = (
+            self.data.append_column(self._index_col, pa.array(np.arange(self.row_count)))
+                .select([self._index_col] + self.data.column_names)
+        )
+
         self._console = Console()
         self._column_content_widths: list[int] = []
 
@@ -361,13 +370,14 @@ class ArrowBackend(DataTableBackend[pa.Table]):
             )
 
     def sort(
-        self, by: list[tuple[str, Literal["ascending", "descending"]]] | str
+        self, by: list[tuple[str, Literal["ascending", "descending"]]] | str | None
     ) -> None:
         """
         by: str sorts table by the data in the column with that name (asc).
         by: list[tuple] sorts the table by the named column(s) with the directions
             indicated.
         """
+        by = by if by else self._index_col
         self.data = self.data.sort_by(by)
 
     def _reset_content_widths(self) -> None:
@@ -475,6 +485,13 @@ if _HAS_POLARS:
                 self.data = data.slice(offset=0, length=max_rows)
             else:
                 self.data = data
+
+            self._index_col = f"_index_{str(uuid.uuid4())[-12:]}"
+            self.data = (
+                self.data.with_columns(pl.Series(self._index_col, np.arange(self.row_count)))
+                    .select([self._index_col] + self.data.columns)
+            )
+
             self._console = Console()
             self._column_content_widths: list[int] = []
 
@@ -621,13 +638,15 @@ if _HAS_POLARS:
             return width
 
         def sort(
-            self, by: list[tuple[str, Literal["ascending", "descending"]]] | str
+            self, by: list[tuple[str, Literal["ascending", "descending"]]] | str | None
         ) -> None:
             """
             by: str sorts table by the data in the column with that name (asc).
             by: list[tuple] sorts the table by the named column(s) with the directions
                 indicated.
             """
+            by = by if by else self._index_col
+
             if isinstance(by, str):
                 cols = [by]
                 typs = [False]

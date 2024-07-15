@@ -2354,7 +2354,7 @@ class DataTable(ScrollView, can_focus=True):
 
     def sort(
         self,
-        by: list[tuple[str, Literal["ascending", "descending"]]] | str,
+        by: list[tuple[str, Literal["ascending", "descending"]]] | str | None,
     ) -> Self:
         """Sort the rows in the `DataTable` by one or more column keys.
 
