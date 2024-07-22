@@ -4,6 +4,7 @@ from abc import ABC, abstractmethod
 from contextlib import suppress
 from pathlib import Path
 from typing import (
+    TYPE_CHECKING,
     Any,
     Dict,
     Generic,
@@ -24,28 +25,28 @@ from rich.console import Console
 
 from textual_fastdatatable.formatter import measure_width
 
-AutoBackendType = Union[
-    pa.Table,
-    pa.RecordBatch,
-    Path,
-    str,
-    Sequence[Iterable[Any]],
-    Mapping[str, Sequence[Any]],
-]
+if TYPE_CHECKING:
+    AutoBackendType = Union[
+        pa.Table,
+        pa.RecordBatch,
+        Path,
+        str,
+        Sequence[Iterable[Any]],
+        Mapping[str, Sequence[Any]],
+        "pl.DataFrame",
+    ]
 
 try:
     import polars as pl
     import polars.datatypes as pld
-
-    AutoBackendType = Union[AutoBackendType, pl.DataFrame]
-
-    _HAS_POLARS = True
 except ImportError:
     _HAS_POLARS = False
+else:
+    _HAS_POLARS = True
 
 
 def create_backend(
-    data: AutoBackendType,
+    data: "AutoBackendType",
     max_rows: int | None = None,
     has_header: bool = False,
 ) -> DataTableBackend:
@@ -78,7 +79,8 @@ def create_backend(
 
     raise TypeError(
         f"Cannot automatically create backend for data of type: {type(data)}. "
-        f"Data must be of type: {AutoBackendType}."
+        f"Data must be of type: Union[pa.Table, pa.RecordBatch, Path, str, "
+        "Sequence[Iterable[Any]], Mapping[str, Sequence[Any]], pl.DataFrame",
     )
 
 
@@ -95,8 +97,17 @@ _TableTypeT = TypeVar("_TableTypeT")
 
 
 class DataTableBackend(ABC, Generic[_TableTypeT]):
+    data: _TableTypeT
+
     @abstractmethod
     def __init__(self, data: _TableTypeT, max_rows: int | None = None) -> None:
+        pass
+
+    @classmethod
+    @abstractmethod
+    def from_pydict(
+        cls, data: Mapping[str, Sequence[Any]], max_rows: int | None = None
+    ) -> "DataTableBackend":
         pass
 
     @property
@@ -425,7 +436,6 @@ class ArrowBackend(DataTableBackend[pa.Table]):
 if _HAS_POLARS:
 
     class PolarsBackend(DataTableBackend[pl.DataFrame]):
-
         @classmethod
         def from_file_path(
             cls, path: Path, max_rows: int | None = None, has_header: bool = True
@@ -446,7 +456,7 @@ if _HAS_POLARS:
 
         @classmethod
         def from_pydict(
-            cls, pydict: dict[str, Sequence[str | int]], max_rows: int | None = None
+            cls, pydict: Mapping[str, Sequence[Any]], max_rows: int | None = None
         ) -> "PolarsBackend":
             return cls(pl.from_dict(pydict), max_rows=max_rows)
 
@@ -501,14 +511,16 @@ if _HAS_POLARS:
         def get_row_at(self, index: int) -> Sequence[Any]:
             if index < 0 or index >= len(self.data):
                 raise IndexError(
-                    f"Cannot get row={index} in table with {len(self.data)} rows and {len(self.data.columns)} cols"
+                    f"Cannot get row={index} in table with {len(self.data)} rows "
+                    f"and {len(self.data.columns)} cols"
                 )
             return list(self.data.slice(index, length=1).to_dicts()[0].values())
 
         def get_column_at(self, column_index: int) -> Sequence[Any]:
             if column_index < 0 or column_index >= len(self.data.columns):
                 raise IndexError(
-                    f"Cannot get column={column_index} in table with {len(self.data)} rows and {len(self.data.columns)} cols"
+                    f"Cannot get column={column_index} in table with {len(self.data)} "
+                    f"rows and {len(self.data.columns)} cols."
                 )
             return list(self.data.to_series(column_index))
 
@@ -520,7 +532,8 @@ if _HAS_POLARS:
                 or column_index >= len(self.data.columns)
             ):
                 raise IndexError(
-                    f"Cannot get cell at row={row_index} col={column_index} in table with {len(self.data)} rows and {len(self.data.columns)} cols"
+                    f"Cannot get cell at row={row_index} col={column_index} in table "
+                    f"with {len(self.data)} rows and {len(self.data.columns)} cols"
                 )
             return self.data.to_series(column_index)[row_index]
 
@@ -562,7 +575,9 @@ if _HAS_POLARS:
         def update_cell(self, row_index: int, column_index: int, value: Any) -> None:
             if row_index >= len(self.data) or column_index >= len(self.data.columns):
                 raise IndexError(
-                    f"Cannot update cell at row={row_index} col={column_index} in table with {len(self.data)} rows and {len(self.data.columns)} cols"
+                    f"Cannot update cell at row={row_index} col={column_index} in "
+                    f"table with {len(self.data)} rows and "
+                    f"{len(self.data.columns)} cols"
                 )
             col_name = self.data.columns[column_index]
             self.data = self.data.with_columns(
@@ -602,7 +617,7 @@ if _HAS_POLARS:
                 )
             if dtype.is_temporal():
                 try:
-                    value = arr.drop_null()[0].as_py()
+                    value = arr.drop_nulls()[0].as_py()
                 except IndexError:
                     return 0
                 else:
@@ -617,7 +632,7 @@ if _HAS_POLARS:
                 strict=False,
             )
             width = arr.fill_null("<null>").str.len_chars().max()
-            assert width is not None
+            assert isinstance(width, int)
             return width
 
         def sort(

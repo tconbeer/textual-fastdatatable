@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-
 import pytest
 from textual_fastdatatable.backend import DataTableBackend
+
 
 def test_column_content_widths(backend: DataTableBackend) -> None:
     assert backend.column_content_widths == [1, 8, 6]
