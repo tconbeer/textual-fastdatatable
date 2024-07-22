@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from typing import Sequence
+from typing import Sequence, Type
 
 import pytest
-from textual_fastdatatable import ArrowBackend
-from textual_fastdatatable.backend import PolarsBackend, ArrowBackend, DataTableBackend
+from textual_fastdatatable.backend import ArrowBackend, DataTableBackend, PolarsBackend
+
 
 @pytest.fixture
 def pydict() -> dict[str, Sequence[str | int]]:
@@ -24,7 +24,11 @@ def records(pydict: dict[str, Sequence[str | int]]) -> list[tuple[str | int, ...
     return [header, *data]
 
 
-
 @pytest.fixture(params=[ArrowBackend, PolarsBackend])
-def backend(request, pydict: dict[str, Sequence[str | int]]) -> DataTableBackend:
-    return request.param.from_pydict(pydict)
+def backend(
+    request: Type[pytest.FixtureRequest], pydict: dict[str, Sequence[str | int]]
+) -> DataTableBackend:
+    backend_cls = request.param
+    assert issubclass(backend_cls, (ArrowBackend, PolarsBackend))
+    backend: ArrowBackend | PolarsBackend = backend_cls.from_pydict(pydict)
+    return backend

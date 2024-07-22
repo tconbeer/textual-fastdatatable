@@ -561,7 +561,7 @@ class DataTable(ScrollView, can_focus=True):
                 else create_backend(
                     data,  # type: ignore[arg-type]
                     max_rows=max_rows,
-                    has_header=(column_labels is None),  # type: ignore
+                    has_header=(column_labels is None),
                 )
             )
         except (TypeError, OSError) as e:
