@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+- Adds a PolarsBackend implementation of DataTableBackend. You must have `polars` installed to use the PolarsBackend. You can install it using the `polars` extra for this package.
+- Fixes a crash from the ArrowBackend when attempting to instantiate negative datetimes after a timezone conversion.
+
 ## [0.8.0] - 2024-07-10
 
 - Fixes a crash when cell contents contained bad Rich Markdown ([tconbeer/harlequin#569](https://github.com/tconbeer/harlequin/issues/569)).

@@ -4,7 +4,6 @@ from abc import ABC, abstractmethod
 from contextlib import suppress
 from pathlib import Path
 from typing import (
-    TYPE_CHECKING,
     Any,
     Dict,
     Generic,
@@ -13,7 +12,6 @@ from typing import (
     Mapping,
     Sequence,
     TypeVar,
-    Union,
 )
 
 import pyarrow as pa
@@ -25,16 +23,7 @@ from rich.console import Console
 
 from textual_fastdatatable.formatter import measure_width
 
-if TYPE_CHECKING:
-    AutoBackendType = Union[
-        pa.Table,
-        pa.RecordBatch,
-        Path,
-        str,
-        Sequence[Iterable[Any]],
-        Mapping[str, Sequence[Any]],
-        "pl.DataFrame",
-    ]
+AutoBackendType = Any
 
 try:
     import polars as pl
@@ -308,14 +297,27 @@ class ArrowBackend(DataTableBackend[pa.Table]):
         return self._column_content_widths
 
     def get_row_at(self, index: int) -> Sequence[Any]:
-        row: Dict[str, Any] = self.data.slice(index, length=1).to_pylist()[0]
-        return list(row.values())
+        try:
+            row: Dict[str, Any] = self.data.slice(index, length=1).to_pylist()[0]
+        except OverflowError:
+            return [None for _ in self.columns]
+        else:
+            return list(row.values())
 
-    def get_column_at(self, column_index: int) -> Sequence[Any]:
-        return self.data[column_index].to_pylist()
+    def get_column_at(self, column_index: int) -> list[Any]:
+        try:
+            values = self.data[column_index].to_pylist()
+        except OverflowError:
+            return [None for _ in range(self.row_count)]
+        else:
+            return values
 
     def get_cell_at(self, row_index: int, column_index: int) -> Any:
-        return self.data[column_index][row_index].as_py()
+        try:
+            value = self.data[column_index][row_index].as_py()
+        except OverflowError:
+            value = None
+        return value
 
     def append_column(self, label: str, default: Any | None = None) -> int:
         """
@@ -357,7 +359,7 @@ class ArrowBackend(DataTableBackend[pa.Table]):
 
     def update_cell(self, row_index: int, column_index: int, value: Any) -> None:
         column = self.data.column(column_index)
-        pycolumn = column.to_pylist()
+        pycolumn = self.get_column_at(column_index=column_index)
         pycolumn[row_index] = value
         new_type = pa.string() if pt.is_null(column.type) else column.type
         self.data = self.data.set_column(
@@ -395,14 +397,20 @@ class ArrowBackend(DataTableBackend[pa.Table]):
             or pt.is_floating(arr.type)
             or pt.is_decimal(arr.type)
         ):
-            col_max = pc.max(arr.fill_null(0)).as_py()
-            col_min = pc.min(arr.fill_null(0)).as_py()
+            try:
+                col_max = pc.max(arr.fill_null(0)).as_py()
+            except OverflowError:
+                col_max = 1000
+            try:
+                col_min = pc.min(arr.fill_null(0)).as_py()
+            except OverflowError:
+                col_min = 0
             return max([measure_width(el, self._console) for el in [col_max, col_min]])
         elif pt.is_temporal(arr.type):
             try:
                 value = arr.drop_null()[0].as_py()
-            except IndexError:
-                return 0
+            except (IndexError, OverflowError):
+                return 24
             else:
                 return measure_width(value, self._console)
 
@@ -429,7 +437,10 @@ class ArrowBackend(DataTableBackend[pa.Table]):
                 )
 
             arr = pc.call_function(udf_name, [arr])
-        width: int = pc.max(pc.utf8_length(arr.fill_null("")).fill_null(0)).as_py()
+        try:
+            width: int = pc.max(pc.utf8_length(arr.fill_null("")).fill_null(0)).as_py()
+        except OverflowError:
+            width = 10
         return width
 
 
@@ -617,7 +628,7 @@ if _HAS_POLARS:
                 )
             if dtype.is_temporal():
                 try:
-                    value = arr.drop_nulls()[0].as_py()
+                    value = arr.drop_nulls()[0]
                 except IndexError:
                     return 0
                 else:

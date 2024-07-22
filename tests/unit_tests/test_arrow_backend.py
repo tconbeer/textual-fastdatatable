@@ -81,3 +81,14 @@ def test_mixed_types() -> None:
     assert backend.row_count == 2
     assert backend.get_row_at(0) == ["1000"]
     assert backend.get_row_at(1) == ["hi"]
+
+
+def test_negative_timestamps() -> None:
+    dt = datetime(1, 1, 1, tzinfo=timezone.utc)
+    arr = pa.array([dt, dt, dt], type=pa.timestamp("s", tz="America/New_York"))
+    tab = pa.table([arr], names=["created_at"])
+    backend = ArrowBackend(data=tab)
+    assert backend.column_content_widths == [24]
+    assert backend.get_column_at(0) == [None, None, None]
+    assert backend.get_row_at(0) == [None]
+    assert backend.get_cell_at(0, 0) is None
