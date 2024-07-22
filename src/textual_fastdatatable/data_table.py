@@ -559,7 +559,7 @@ class DataTable(ScrollView, can_focus=True):
                 backend
                 if backend is not None
                 else create_backend(
-                    data,  # type: ignore[arg-type]
+                    data,
                     max_rows=max_rows,
                     has_header=(column_labels is None),
                 )
