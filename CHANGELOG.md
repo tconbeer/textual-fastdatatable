@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.9.0] - 2024-07-23
+
 - Adds a PolarsBackend implementation of DataTableBackend. You must have `polars` installed to use the PolarsBackend. You can install it using the `polars` extra for this package.
 - Fixes a crash from the ArrowBackend when attempting to instantiate negative datetimes after a timezone conversion.
 
@@ -138,7 +140,8 @@ All notable changes to this project will be documented in this file.
 
 - Initial release. Adds DataTable and ArrowBackend, which is 1000x faster for datasets of 500k records or more.
 
-[unreleased]: https://github.com/tconbeer/textual-fastdatatable/compare/0.8.0...HEAD
+[unreleased]: https://github.com/tconbeer/textual-fastdatatable/compare/0.9.0...HEAD
+[0.9.0]: https://github.com/tconbeer/textual-fastdatatable/compare/0.8.0...0.9.0
 [0.8.0]: https://github.com/tconbeer/textual-fastdatatable/compare/0.7.1...0.8.0
 [0.7.1]: https://github.com/tconbeer/textual-fastdatatable/compare/0.7.0...0.7.1
 [0.7.0]: https://github.com/tconbeer/textual-fastdatatable/compare/0.6.3...0.7.0
