@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.10.0] - 2024-10-31
+
 - Adds an optional parameter to DataTable to disable rendering of string data as Rich Markup.
 
 ## [0.9.0] - 2024-07-23
@@ -142,7 +144,8 @@ All notable changes to this project will be documented in this file.
 
 - Initial release. Adds DataTable and ArrowBackend, which is 1000x faster for datasets of 500k records or more.
 
-[unreleased]: https://github.com/tconbeer/textual-fastdatatable/compare/0.9.0...HEAD
+[unreleased]: https://github.com/tconbeer/textual-fastdatatable/compare/0.10.0...HEAD
+[0.10.0]: https://github.com/tconbeer/textual-fastdatatable/compare/0.9.0...0.10.0
 [0.9.0]: https://github.com/tconbeer/textual-fastdatatable/compare/0.8.0...0.9.0
 [0.8.0]: https://github.com/tconbeer/textual-fastdatatable/compare/0.7.1...0.8.0
 [0.7.1]: https://github.com/tconbeer/textual-fastdatatable/compare/0.7.0...0.7.1
