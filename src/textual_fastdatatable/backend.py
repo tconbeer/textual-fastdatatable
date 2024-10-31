@@ -252,7 +252,10 @@ class ArrowBackend(DataTableBackend[pa.Table]):
         except (pal.ArrowInvalid, pal.ArrowTypeError):
             # one or more fields has mixed types, like int and
             # string. Cast all to string for safety
-            new_data = {k: [str(val) for val in v] for k, v in data.items()}
+            new_data = {
+                k: [str(val) if val is not None else None for val in v]
+                for k, v in data.items()
+            }
             tbl = pa.Table.from_pydict(new_data)
         return cls(tbl, max_rows=max_rows)
 
