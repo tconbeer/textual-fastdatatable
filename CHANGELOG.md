@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 - Adds an optional parameter to DataTable to disable rendering of string data as Rich Markup.
+- Fixes a bug where None could be casted to a string and displayed as "None" ([tconbeer/harlequin#658](https://github.com/tconbeer/harlequin/issues/658))
 
 ## [0.9.0] - 2024-07-23
 
