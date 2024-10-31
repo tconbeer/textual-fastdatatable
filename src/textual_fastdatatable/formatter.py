@@ -15,7 +15,7 @@ from textual_fastdatatable.column import Column
 
 
 def cell_formatter(
-    obj: object, null_rep: Text, col: Column | None = None
+    obj: object, null_rep: Text, col: Column | None = None, render_markup: bool = True
 ) -> RenderableType:
     """Convert a cell into a Rich renderable for display.
 
@@ -30,12 +30,14 @@ def cell_formatter(
     """
     if obj is None:
         return Align(null_rep, align="center")
-    elif isinstance(obj, str):
+    elif isinstance(obj, str) and render_markup:
         try:
             rich_text: Text | str = Text.from_markup(obj)
         except MarkupError:
             rich_text = escape(obj)
         return rich_text
+    elif isinstance(obj, str):
+        return escape(obj)
     elif isinstance(obj, bool):
         return Align(
             f"[dim]{'✓' if obj else 'X'}[/] {obj}{' ' if obj else ''}",

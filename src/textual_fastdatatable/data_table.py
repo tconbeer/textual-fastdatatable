@@ -552,6 +552,7 @@ class DataTable(ScrollView, can_focus=True):
         classes: str | None = None,
         disabled: bool = False,
         null_rep: str = "",
+        render_markup: bool = True,
     ) -> None:
         super().__init__(name=name, id=id, classes=classes, disabled=disabled)
         try:
@@ -652,6 +653,8 @@ class DataTable(ScrollView, can_focus=True):
         """The type of cursor of the `DataTable`."""
         self.null_rep = Text.from_markup(null_rep)
         """The string used to represent missing data (None or null)"""
+        self.render_markup = render_markup
+        """If true, render string data as Rich markup."""
 
     @property
     def hover_row(self) -> int:
@@ -1775,7 +1778,9 @@ class DataTable(ScrollView, can_focus=True):
         empty = self.null_rep
 
         formatted_row_cells = [
-            cell_formatter(datum, null_rep=empty, col=col)
+            cell_formatter(
+                datum, null_rep=empty, col=col, render_markup=self.render_markup
+            )
             for datum, col in zip_longest(ordered_row, self.ordered_columns)
         ]
         label = None
@@ -1811,6 +1816,7 @@ class DataTable(ScrollView, can_focus=True):
             datum,
             null_rep=self.null_rep,
             col=self.ordered_columns[column_index],
+            render_markup=self.render_markup,
         )
 
     def _render_cell(

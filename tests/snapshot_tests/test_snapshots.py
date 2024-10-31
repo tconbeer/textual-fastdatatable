@@ -21,6 +21,10 @@ def test_datatable_row_cursor_render(snap_compare: Callable) -> None:
     assert snap_compare(SNAPSHOT_APPS_DIR / "data_table_row_cursor.py", press=press)
 
 
+def test_datatable_no_render_markup(snap_compare: Callable) -> None:
+    assert snap_compare(SNAPSHOT_APPS_DIR / "data_table_no_render_markup.py")
+
+
 def test_datatable_range_cursor_render(snap_compare: Callable) -> None:
     press = ["right", "down", "shift+right", "shift+down", "shift+down"]
     assert snap_compare(SNAPSHOT_APPS_DIR / "data_table_range_cursor.py", press=press)
