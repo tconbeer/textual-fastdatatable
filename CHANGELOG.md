@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+- Adds an optional parameter to DataTable to disable rendering of string data as Rich Markup.
+
 ## [0.9.0] - 2024-07-23
 
 - Adds a PolarsBackend implementation of DataTableBackend. You must have `polars` installed to use the PolarsBackend. You can install it using the `polars` extra for this package.
