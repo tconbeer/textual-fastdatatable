@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.11.0] - 2024-12-19
+
 - Drops support for Python 3.8
 - Adds support for Python 3.13
 
@@ -148,7 +150,8 @@ All notable changes to this project will be documented in this file.
 
 - Initial release. Adds DataTable and ArrowBackend, which is 1000x faster for datasets of 500k records or more.
 
-[unreleased]: https://github.com/tconbeer/textual-fastdatatable/compare/0.10.0...HEAD
+[unreleased]: https://github.com/tconbeer/textual-fastdatatable/compare/0.11.0...HEAD
+[0.11.0]: https://github.com/tconbeer/textual-fastdatatable/compare/0.10.0...0.11.0
 [0.10.0]: https://github.com/tconbeer/textual-fastdatatable/compare/0.9.0...0.10.0
 [0.9.0]: https://github.com/tconbeer/textual-fastdatatable/compare/0.8.0...0.9.0
 [0.8.0]: https://github.com/tconbeer/textual-fastdatatable/compare/0.7.1...0.8.0
