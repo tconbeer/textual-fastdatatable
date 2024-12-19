@@ -15,12 +15,11 @@ build-backend = "poetry.core.masonry.api"
 
 
 [tool.poetry.dependencies]
-python = "^3.8"
-textual = ">=0.41.0"
-pyarrow = ">=7.0.0"
+python = ">=3.9,<3.14"
+textual = ">=0.89.1"
+pyarrow = ">=16.1.0"
 polars = { version = ">=0.20.0", optional = true } 
-pytz = {version = ">=2023,<2025", python = "<3.9.0"} # arrow timestamptz support py<3.9
-tzdata = {version = ">=2023", markers = "sys_platform == 'win32'"} # arrow timestamptz support on windows
+tzdata = { version = ">=2023", markers = "sys_platform == 'win32'" } # arrow timestamptz support on windows
 
 [tool.poetry.extras]
 polars = ["polars"]
@@ -28,14 +27,14 @@ polars = ["polars"]
 [tool.poetry.group.dev.dependencies]
 pre-commit = "^3.3.1"
 textual-dev = "^1.0.1"
-pandas = { version="^2.1.1", python=">=3.9,<3.13" }
-numpy = { version="^1", python=">=3.9,<3.13" }
-pyinstrument = "^4.6.0"
+pandas = "^2.1.1"
+numpy = "^1"
+pyinstrument = "^5"
 
 [tool.poetry.group.static.dependencies]
 ruff = "^0.5"
 mypy = "^1.10.0"
-pandas-stubs = { version="^2.1.1", python=">=3.9,<3.13" }
+pandas-stubs = "^2.1.1"
 
 [tool.poetry.group.test.dependencies]
 pytest = "^7.3.1"
@@ -45,13 +44,13 @@ polars = ">=0.20.0"
 
 
 [tool.ruff]
-target-version = "py38"
+target-version = "py39"
 
 [tool.ruff.lint]
 select = ["A", "B", "E", "F", "I"]
 
 [tool.mypy]
-python_version = "3.8"
+python_version = "3.9"
 files = [
     "src/**/*.py",
     "tests/unit_tests/**/*.py"

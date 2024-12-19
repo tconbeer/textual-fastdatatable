@@ -1995,7 +1995,7 @@ class DataTable(ScrollView, can_focus=True):
         cursor_location: Coordinate,
         hover_location: Coordinate,
         selection_anchor_location: Coordinate | None,
-    ) -> tuple[SegmentLines, SegmentLines, int]:
+    ) -> tuple[SegmentLines, SegmentLines, int, int]:
         """Render a single line from a row in the DataTable.
 
         Args:
@@ -2023,15 +2023,16 @@ class DataTable(ScrollView, can_focus=True):
         col_widths = [
             col.render_width for col in self.ordered_columns[self.fixed_columns :]
         ]
-        cumulative_width = fixed_width
+        cumulative_width = 0
+        hidden_width = 0
+        visible_width = self.size.width - fixed_width
         col1 = self.fixed_columns
-        offset = x1 - cumulative_width
         col2 = None
         for i, w in enumerate(col_widths, start=self.fixed_columns):
-            if cumulative_width <= x1:
+            if cumulative_width < x1:
                 col1 = i
-                offset = x1 - cumulative_width
-            if col2 is None and cumulative_width + w >= x2:
+                hidden_width = cumulative_width
+            if col2 is None and cumulative_width - x1 > visible_width:
                 col2 = i
                 break
             cumulative_width += w
@@ -2056,7 +2057,7 @@ class DataTable(ScrollView, can_focus=True):
 
         if cache_key in self._row_render_cache:
             cache_contents = self._row_render_cache[cache_key]
-            return cache_contents[0], cache_contents[1], offset
+            return cache_contents[0], cache_contents[1], hidden_width, fixed_width
 
         should_highlight = self._should_highlight
         should_highlight_range = self._should_highlight_range
@@ -2145,7 +2146,7 @@ class DataTable(ScrollView, can_focus=True):
         )
         remaining_space = max(0, widget_width - table_width)
         background_color = self.background_colors[1]
-        faded_color = Color.from_rich_color(row_style.bgcolor).blend(  # type: ignore
+        faded_color = Color.from_rich_color(row_style.bgcolor).blend(
             background_color, factor=0.25
         )
         faded_style = Style.from_color(
@@ -2154,7 +2155,7 @@ class DataTable(ScrollView, can_focus=True):
         scrollable_row.append([Segment(" " * remaining_space, faded_style)])
 
         self._row_render_cache[cache_key] = (fixed_row, scrollable_row)
-        return (fixed_row, scrollable_row, offset)
+        return (fixed_row, scrollable_row, hidden_width, fixed_width)
 
     def _get_offsets(self, y: int) -> tuple[int, int]:
         """Get row key and line offset for a given line.
@@ -2219,7 +2220,7 @@ class DataTable(ScrollView, can_focus=True):
         if cache_key in self._line_cache:
             return self._line_cache[cache_key]
 
-        fixed, scrollable, xoffset = self._render_line_in_row(
+        fixed, scrollable, hidden_width, fixed_width = self._render_line_in_row(
             row_index,
             0,
             x1,
@@ -2233,7 +2234,9 @@ class DataTable(ScrollView, can_focus=True):
         fixed_line: list[Segment] = list(chain.from_iterable(fixed)) if fixed else []
         scrollable_line: list[Segment] = list(chain.from_iterable(scrollable))
 
-        segments = fixed_line + line_crop(scrollable_line, xoffset, x2, width)
+        segments = fixed_line + line_crop(
+            scrollable_line, x1 - hidden_width, x2 - hidden_width, width - fixed_width
+        )
         strip = Strip(segments).adjust_cell_length(width, base_style).simplify()
 
         self._line_cache[cache_key] = strip
