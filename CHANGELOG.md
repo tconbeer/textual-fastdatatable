@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+- Drops support for Python 3.8
+- Adds support for Python 3.13
+
 ## [0.10.0] - 2024-10-31
 
 - Adds an optional parameter to DataTable to disable rendering of string data as Rich Markup.
