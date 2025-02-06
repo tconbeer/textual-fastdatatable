@@ -25,8 +25,6 @@ from rich.console import Console
 from textual_fastdatatable.formatter import measure_width
 
 AutoBackendType = Any
-MAX_32BIT_INT = 2**31 - 1
-MAX_64BIT_INT = 2**63 - 1
 
 try:
     import polars as pl
@@ -241,19 +239,19 @@ class ArrowBackend(DataTableBackend[pa.Table]):
         we return None.
         """
         if pt.is_date32(scalar.type):
-            if scalar.value == MAX_32BIT_INT:  # duckdb +infinty
+            if scalar.value > 0:  # type: ignore[attr-defined]
                 return date.max
-            elif scalar.value == -MAX_32BIT_INT:  # duckdb -infinty
+            elif scalar.value <= 0:  # type: ignore[attr-defined]
                 return date.min
         elif pt.is_date64(scalar.type):
-            if scalar.value == MAX_64BIT_INT:  # duckdb +infinty
+            if scalar.value > 0:  # type: ignore[attr-defined]
                 return date.max
-            elif scalar.value == -MAX_64BIT_INT:  # duckdb -infinty
+            elif scalar.value <= 0:  # type: ignore[attr-defined]
                 return date.min
         elif pt.is_timestamp(scalar.type):
-            if scalar.value == MAX_64BIT_INT:  # duckdb +infinty
+            if scalar.value > 0:  # type: ignore[attr-defined]
                 return datetime.max
-            elif scalar.value == -MAX_64BIT_INT:  # duckdb -infinty
+            elif scalar.value <= 0:  # type: ignore[attr-defined]
                 return datetime.min
 
         return None
@@ -437,11 +435,11 @@ class ArrowBackend(DataTableBackend[pa.Table]):
             try:
                 col_max = pc.max(arr.fill_null(0)).as_py()
             except OverflowError:
-                col_max = MAX_64BIT_INT
+                col_max = 9223372036854775807
             try:
                 col_min = pc.min(arr.fill_null(0)).as_py()
             except OverflowError:
-                col_min = -MAX_64BIT_INT
+                col_min = -9223372036854775807
             return max([measure_width(el, self._console) for el in [col_max, col_min]])
         elif pt.is_temporal(arr.type):
             try:

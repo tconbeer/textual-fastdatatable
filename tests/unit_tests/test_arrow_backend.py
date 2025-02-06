@@ -88,7 +88,7 @@ def test_negative_timestamps() -> None:
     arr = pa.array([dt, dt, dt], type=pa.timestamp("s", tz="America/New_York"))
     tab = pa.table([arr], names=["created_at"])
     backend = ArrowBackend(data=tab)
-    assert backend.column_content_widths == [24]
-    assert backend.get_column_at(0) == [None, None, None]
-    assert backend.get_row_at(0) == [None]
-    assert backend.get_cell_at(0, 0) is None
+    assert backend.column_content_widths == [26]
+    assert backend.get_column_at(0) == [datetime.min, datetime.min, datetime.min]
+    assert backend.get_row_at(0) == [datetime.min]
+    assert backend.get_cell_at(0, 0) is datetime.min

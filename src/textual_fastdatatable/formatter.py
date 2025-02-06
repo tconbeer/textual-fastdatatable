@@ -65,7 +65,10 @@ def cell_formatter(
 
         if obj in (datetime.max, datetime.min):
             return Align(
-                f"[bold]{'∞ ' if obj == datetime.max else '-∞ '}[/][dim]{_fmt_datetime(obj)}[/]",
+                (
+                    f"[bold]{'∞ ' if obj == datetime.max else '-∞ '}[/]"
+                    f"[dim]{_fmt_datetime(obj)}[/]"
+                ),
                 align="right",
             )
 
@@ -74,7 +77,10 @@ def cell_formatter(
     elif isinstance(obj, date):
         if obj in (date.max, date.min):
             return Align(
-                f"[bold]{'∞ ' if obj == date.max else '-∞ '}[/][dim]{obj.isoformat()}[/]",
+                (
+                    f"[bold]{'∞ ' if obj == date.max else '-∞ '}[/]"
+                    f"[dim]{obj.isoformat()}[/]"
+                ),
                 align="right",
             )
 

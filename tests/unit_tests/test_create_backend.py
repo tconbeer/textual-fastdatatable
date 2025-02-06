@@ -1,7 +1,10 @@
 from datetime import date, datetime
 
 import pyarrow as pa
-from textual_fastdatatable.backend import MAX_32BIT_INT, MAX_64BIT_INT, create_backend
+from textual_fastdatatable.backend import create_backend
+
+MAX_32BIT_INT = 2**31 - 1
+MAX_64BIT_INT = 2**63 - 1
 
 
 def test_empty_sequence() -> None:
@@ -32,12 +35,12 @@ def test_infinity_timestamps() -> None:
                     pa.scalar(-MAX_64BIT_INT, type=pa.date64()),
                 ],
                 "ts": [
-                    pa.scalar(MAX_64BIT_INT, type=pa.timestamp('s')),
-                    pa.scalar(-MAX_64BIT_INT, type=pa.timestamp('s')),
+                    pa.scalar(MAX_64BIT_INT, type=pa.timestamp("s")),
+                    pa.scalar(-MAX_64BIT_INT, type=pa.timestamp("s")),
                 ],
                 "tns": [
-                    pa.scalar(MAX_64BIT_INT, type=pa.timestamp('ns')),
-                    pa.scalar(-MAX_64BIT_INT, type=pa.timestamp('ns')),
+                    pa.scalar(MAX_64BIT_INT, type=pa.timestamp("ns")),
+                    pa.scalar(-MAX_64BIT_INT, type=pa.timestamp("ns")),
                 ],
             }
         )
@@ -48,4 +51,4 @@ def test_infinity_timestamps() -> None:
     assert from_arrow.get_row_at(1) == [date.min, date.min, datetime.min, datetime.min]
     assert from_arrow.get_column_at(0) == [date.max, date.min]
     assert from_arrow.get_column_at(2) == [datetime.max, datetime.min]
-    assert from_arrow.get_cell_at(0,0) == date.max
+    assert from_arrow.get_cell_at(0, 0) == date.max
