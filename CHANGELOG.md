@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.12.0] - 2025-02-06
+
 - Catch overflow errors when casting arrow temporal types to python date and datetimes, and substitue date.max/min and datetime.max/min, instead of None.
 - Format date.max/min and datetime.max/min with an infinity symbol (`∞`) when rendering cells with those values.
 
@@ -153,7 +155,8 @@ All notable changes to this project will be documented in this file.
 
 - Initial release. Adds DataTable and ArrowBackend, which is 1000x faster for datasets of 500k records or more.
 
-[unreleased]: https://github.com/tconbeer/textual-fastdatatable/compare/0.11.0...HEAD
+[unreleased]: https://github.com/tconbeer/textual-fastdatatable/compare/0.12.0...HEAD
+[0.12.0]: https://github.com/tconbeer/textual-fastdatatable/compare/0.11.0...0.12.0
 [0.11.0]: https://github.com/tconbeer/textual-fastdatatable/compare/0.10.0...0.11.0
 [0.10.0]: https://github.com/tconbeer/textual-fastdatatable/compare/0.9.0...0.10.0
 [0.9.0]: https://github.com/tconbeer/textual-fastdatatable/compare/0.8.0...0.9.0
