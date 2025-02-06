@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+- Catch overflow errors when casting arrow temporal types to python date and datetimes, and substitue date.max/min and datetime.max/min, instead of None.
+- Format date.max/min and datetime.max/min with an infinity symbol (`∞`) when rendering cells with those values.
+
 ## [0.11.0] - 2024-12-19
 
 - Drops support for Python 3.8

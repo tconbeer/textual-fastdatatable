@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from contextlib import suppress
+from datetime import date, datetime
 from pathlib import Path
 from typing import (
     Any,
@@ -229,6 +230,32 @@ class ArrowBackend(DataTableBackend[pa.Table]):
         pydict = {header: [row[i] for row in data] for i, header in enumerate(headers)}
         return pydict
 
+    @staticmethod
+    def _handle_overflow(scalar: pa.Scalar) -> Any | None:
+        """
+        PyArrow may throw an OverflowError when casting arrow types
+        to python types; in some cases we can catch these and
+        present a sensible value in the data table; otherwise
+        we return None.
+        """
+        if pt.is_date32(scalar.type):
+            if scalar.value > 0:  # type: ignore[attr-defined]
+                return date.max
+            elif scalar.value <= 0:  # type: ignore[attr-defined]
+                return date.min
+        elif pt.is_date64(scalar.type):
+            if scalar.value > 0:  # type: ignore[attr-defined]
+                return date.max
+            elif scalar.value <= 0:  # type: ignore[attr-defined]
+                return date.min
+        elif pt.is_timestamp(scalar.type):
+            if scalar.value > 0:  # type: ignore[attr-defined]
+                return datetime.max
+            elif scalar.value <= 0:  # type: ignore[attr-defined]
+                return datetime.min
+
+        return None
+
     @classmethod
     def from_batches(
         cls, data: pa.RecordBatch, max_rows: int | None = None
@@ -303,7 +330,10 @@ class ArrowBackend(DataTableBackend[pa.Table]):
         try:
             row: Dict[str, Any] = self.data.slice(index, length=1).to_pylist()[0]
         except OverflowError:
-            return [None for _ in self.columns]
+            return [
+                self._handle_overflow(self.data[i][index])
+                for i in range(len(self.columns))
+            ]
         else:
             return list(row.values())
 
@@ -311,15 +341,17 @@ class ArrowBackend(DataTableBackend[pa.Table]):
         try:
             values = self.data[column_index].to_pylist()
         except OverflowError:
-            return [None for _ in range(self.row_count)]
+            # TODO: consider registering a scalar UDF here for parallel processing
+            return [self._handle_overflow(scalar) for scalar in self.data[column_index]]
         else:
             return values
 
     def get_cell_at(self, row_index: int, column_index: int) -> Any:
+        scalar = self.data[column_index][row_index]
         try:
-            value = self.data[column_index][row_index].as_py()
+            value = scalar.as_py()
         except OverflowError:
-            value = None
+            value = self._handle_overflow(scalar)
         return value
 
     def append_column(self, label: str, default: Any | None = None) -> int:
@@ -403,29 +435,34 @@ class ArrowBackend(DataTableBackend[pa.Table]):
             try:
                 col_max = pc.max(arr.fill_null(0)).as_py()
             except OverflowError:
-                col_max = 1000
+                col_max = 9223372036854775807
             try:
                 col_min = pc.min(arr.fill_null(0)).as_py()
             except OverflowError:
-                col_min = 0
+                col_min = -9223372036854775807
             return max([measure_width(el, self._console) for el in [col_max, col_min]])
         elif pt.is_temporal(arr.type):
             try:
                 value = arr.drop_null()[0].as_py()
-            except (IndexError, OverflowError):
+            except OverflowError:
+                return 26  # need space for the infinity sign and a space
+            except IndexError:
                 return 24
             else:
+                # valid temporal types all have the same width for their type
                 return measure_width(value, self._console)
 
         # for everything else, we need to compute it
-
+        # First, cast the data to strings
         try:
             arr = arr.cast(
                 pa.string(),
                 safe=False,
             )
         except (pal.ArrowNotImplementedError, pal.ArrowInvalid):
-
+            # some types can't be casted to strings natively by arrow, but they
+            # can be casted to strings by python. The arrow way is faster, but
+            # if it fails, register a python udf and try again
             def py_str(_ctx: Any, arr: pa.Array) -> str | pa.Array | pa.ChunkedArray:
                 return pa.array([str(el) for el in arr], type=pa.string())
 
@@ -440,6 +477,9 @@ class ArrowBackend(DataTableBackend[pa.Table]):
                 )
 
             arr = pc.call_function(udf_name, [arr])
+
+        # next, try to measure the UTF-encoded string length of each cell,
+        # then take the max
         try:
             width: int = pc.max(pc.utf8_length(arr.fill_null("")).fill_null(0)).as_py()
         except OverflowError:

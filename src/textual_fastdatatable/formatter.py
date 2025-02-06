@@ -30,38 +30,68 @@ def cell_formatter(
     """
     if obj is None:
         return Align(null_rep, align="center")
+
     elif isinstance(obj, str) and render_markup:
         try:
             rich_text: Text | str = Text.from_markup(obj)
         except MarkupError:
             rich_text = escape(obj)
         return rich_text
+
     elif isinstance(obj, str):
         return escape(obj)
+
     elif isinstance(obj, bool):
         return Align(
             f"[dim]{'✓' if obj else 'X'}[/] {obj}{' ' if obj else ''}",
             style="bold" if obj else "",
             align="right",
         )
+
     elif isinstance(obj, (float, Decimal)):
         return Align(f"{obj:n}", align="right")
+
     elif isinstance(obj, int):
         if col is not None and col.is_id:
             # no separators in ID fields
             return Align(str(obj), align="right")
         else:
             return Align(f"{obj:n}", align="right")
+
     elif isinstance(obj, (datetime, time)):
-        return Align(
-            obj.isoformat(timespec="milliseconds").replace("+00:00", "Z"), align="right"
-        )
+
+        def _fmt_datetime(obj: datetime | time) -> str:
+            return obj.isoformat(timespec="milliseconds").replace("+00:00", "Z")
+
+        if obj in (datetime.max, datetime.min):
+            return Align(
+                (
+                    f"[bold]{'∞ ' if obj == datetime.max else '-∞ '}[/]"
+                    f"[dim]{_fmt_datetime(obj)}[/]"
+                ),
+                align="right",
+            )
+
+        return Align(_fmt_datetime(obj), align="right")
+
     elif isinstance(obj, date):
+        if obj in (date.max, date.min):
+            return Align(
+                (
+                    f"[bold]{'∞ ' if obj == date.max else '-∞ '}[/]"
+                    f"[dim]{obj.isoformat()}[/]"
+                ),
+                align="right",
+            )
+
         return Align(obj.isoformat(), align="right")
+
     elif isinstance(obj, timedelta):
         return Align(str(obj), align="right")
+
     elif not is_renderable(obj):
         return str(obj)
+
     else:
         return cast(RenderableType, obj)
 
