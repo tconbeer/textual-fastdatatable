@@ -1,24 +1,29 @@
 .PHONY: check
 check:
-	ruff format .
-	pytest
-	ruff check . --fix
-	mypy
+	uv sync --group test --group static
+	uv run ruff format .
+	uv run pytest
+	uv run ruff check . --fix
+	uv run mypy
 
 .PHONY: lint
 lint:
-	ruff format .
-	ruff check . --fix
-	mypy
+	uv sync --group test --group static
+	uv run ruff format .
+	uv run ruff check . --fix
+	uv run mypy
 
 .PHONY: serve
 serve:
-	textual run --dev -c python -m textual_fastdatatable
+	uv sync --group dev
+	uv run textual run --dev -c python -m textual_fastdatatable
 
 .PHONY: profile
 profile:
-	pyinstrument -r html -o profile.html "src/scripts/run_arrow_wide.py"
+	uv sync --group dev
+	uv run pyinstrument -r html -o profile.html "src/scripts/run_arrow_wide.py"
 
 .PHONY: benchmark
 benchmark:
-	python src/scripts/benchmark.py > /dev/null
+	uv sync --group dev
+	uv run scripts/benchmark.py > /dev/null
