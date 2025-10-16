@@ -1381,24 +1381,33 @@ class DataTable(ScrollView, can_focus=True):
                 regardless of its current location in the DataTable (it could have moved
                 after being added due to sorting/insertion/deletion of other columns).
         """
+        cols = self.ordered_columns
+
         label = Text.from_markup(label) if isinstance(label, str) else label
+
+        # TODO: dedupe with column.py
         label_width = measure(self.app.console, label, 1)
+        default_width = (
+            measure(self.app.console, default, 1) if default is not None else 0
+        )
         if width is None:
             col = Column(
                 label,
                 label_width,
-                content_width=label_width,
+                content_width=max(label_width, default_width),
                 auto_width=True,
             )
         else:
             col = Column(
                 label,
                 width,
-                content_width=label_width,
+                content_width=max(label_width, default_width),
             )
-        if self._ordered_columns is not None:
-            self._ordered_columns.append(col)
-        elif self._column_labels is not None:
+
+        cols.append(col)
+        self._ordered_columns = cols
+
+        if self._column_labels is not None:
             self._column_labels.append(label)
 
         if self._column_widths is not None:
@@ -1698,6 +1707,9 @@ class DataTable(ScrollView, can_focus=True):
     @property
     def ordered_columns(self) -> list[Column]:
         """The list of Columns in the DataTable, ordered as they appear on screen."""
+        if self._ordered_columns is not None:
+            return self._ordered_columns
+
         if self._column_labels is not None:
             labels = self._column_labels
         elif self.backend is not None:
@@ -1715,19 +1727,18 @@ class DataTable(ScrollView, can_focus=True):
         else:
             column_content_widths = [0] * len(labels)
 
-        if self._ordered_columns is None:
-            self._ordered_columns = [
-                Column(
-                    label=Text.from_markup(label) if isinstance(label, str) else label,
-                    width=width if width is not None else 0,
-                    content_width=content_width,
-                    auto_width=True if width is None or width == 0 else False,
-                    max_content_width=self.max_column_content_width,
-                )
-                for label, width, content_width in zip(
-                    labels, widths, column_content_widths
-                )
-            ]
+        self._ordered_columns = [
+            Column(
+                label=Text.from_markup(label) if isinstance(label, str) else label,
+                width=width if width is not None else 0,
+                content_width=content_width,
+                auto_width=True if width is None or width == 0 else False,
+                max_content_width=self.max_column_content_width,
+            )
+            for label, width, content_width in zip(
+                labels, widths, column_content_widths
+            )
+        ]
         return self._ordered_columns
 
     # @property
