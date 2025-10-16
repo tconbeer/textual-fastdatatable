@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+- Fixes column rendering bug to make compatible with recent versions of Textual.
+
 ## [0.13.0] - 2025-10-16
 
 - Makes dependecies more exact to ensure installations use wheels for large dependencies (numpy, pyarrow, pandas, etc.).

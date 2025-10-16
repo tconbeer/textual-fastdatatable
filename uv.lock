@@ -23,14 +23,14 @@ name = "aiohttp"
 version = "3.13.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "aiohappyeyeballs", marker = "python_full_version < '3.12'" },
-    { name = "aiosignal", marker = "python_full_version < '3.12'" },
+    { name = "aiohappyeyeballs" },
+    { name = "aiosignal" },
     { name = "async-timeout", marker = "python_full_version < '3.11'" },
-    { name = "attrs", marker = "python_full_version < '3.12'" },
-    { name = "frozenlist", marker = "python_full_version < '3.12'" },
-    { name = "multidict", marker = "python_full_version < '3.12'" },
-    { name = "propcache", marker = "python_full_version < '3.12'" },
-    { name = "yarl", marker = "python_full_version < '3.12'" },
+    { name = "attrs" },
+    { name = "frozenlist" },
+    { name = "multidict" },
+    { name = "propcache" },
+    { name = "yarl" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/62/f1/8515650ac3121a9e55c7b217c60e7fae3e0134b5acfe65691781b5356929/aiohttp-3.13.0.tar.gz", hash = "sha256:378dbc57dd8cf341ce243f13fa1fa5394d68e2e02c15cd5f28eae35a70ec7f67", size = 7832348, upload-time = "2025-10-06T19:58:48.089Z" }
 wheels = [
@@ -122,12 +122,25 @@ wheels = [
 ]
 
 [[package]]
+name = "aiohttp-jinja2"
+version = "1.6"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "aiohttp" },
+    { name = "jinja2" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/e6/39/da5a94dd89b1af7241fb7fc99ae4e73505b5f898b540b6aba6dc7afe600e/aiohttp-jinja2-1.6.tar.gz", hash = "sha256:a3a7ff5264e5bca52e8ae547bbfd0761b72495230d438d05b6c0915be619b0e2", size = 53057, upload-time = "2023-11-18T15:30:52.559Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/eb/90/65238d4246307195411b87a07d03539049819b022c01bcc773826f600138/aiohttp_jinja2-1.6-py3-none-any.whl", hash = "sha256:0df405ee6ad1b58e5a068a105407dc7dcc1704544c559f1938babde954f945c7", size = 11736, upload-time = "2023-11-18T15:30:50.743Z" },
+]
+
+[[package]]
 name = "aiosignal"
 version = "1.4.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "frozenlist", marker = "python_full_version < '3.12'" },
-    { name = "typing-extensions", marker = "python_full_version < '3.12'" },
+    { name = "frozenlist" },
+    { name = "typing-extensions", marker = "python_full_version < '3.13'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/61/62/06741b579156360248d1ec624842ad0edf697050bbaf7c3e46394e106ad1/aiosignal-1.4.0.tar.gz", hash = "sha256:f47eecd9468083c2029cc99945502cb7708b082c232f9aca65da147157b251c7", size = 25007, upload-time = "2025-07-03T22:54:43.528Z" }
 wheels = [
@@ -181,11 +194,13 @@ name = "click"
 version = "8.3.0"
 source = { registry = "https://pypi.org/simple" }
 resolution-markers = [
+    "python_full_version >= '3.13'",
+    "python_full_version == '3.12.*'",
     "python_full_version == '3.11.*'",
     "python_full_version == '3.10.*'",
 ]
 dependencies = [
-    { name = "colorama", marker = "python_full_version >= '3.10' and python_full_version < '3.12' and sys_platform == 'win32'" },
+    { name = "colorama", marker = "python_full_version >= '3.10' and sys_platform == 'win32'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/46/61/de6cd827efad202d7057d93e0fed9294b96952e188f7384832791c7b2254/click-8.3.0.tar.gz", hash = "sha256:e7b8232224eba16f4ebe410c25ced9f7875cb5f3263ffc93cc3e8da705e229c4", size = 276943, upload-time = "2025-09-18T17:32:23.696Z" }
 wheels = [
@@ -1526,36 +1541,38 @@ wheels = [
 
 [[package]]
 name = "textual"
-version = "0.89.1"
+version = "6.3.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "markdown-it-py", version = "3.0.0", source = { registry = "https://pypi.org/simple" }, extra = ["linkify", "plugins"], marker = "python_full_version < '3.10'" },
     { name = "markdown-it-py", version = "4.0.0", source = { registry = "https://pypi.org/simple" }, extra = ["linkify", "plugins"], marker = "python_full_version >= '3.10'" },
     { name = "platformdirs", version = "4.4.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
     { name = "platformdirs", version = "4.5.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
+    { name = "pygments" },
     { name = "rich" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/4b/cb/b3ff0e45d812997a527cb581a4cd602f0b28793450aa26201969fd6ce42c/textual-0.89.1.tar.gz", hash = "sha256:66befe80e2bca5a8c876cd8ceeaf01752267b6b1dc1d0f73071f1f1e15d90cc8", size = 1517074, upload-time = "2024-12-05T15:17:12.903Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/ff/51/51a0863339c4c3fa204f43044e52dfd688a7ee2ba2c987e021acc9583a42/textual-6.3.0.tar.gz", hash = "sha256:a89c557fa740611551dcf4f93643f33853eca488183ef5882200dde8e94315e8", size = 1573232, upload-time = "2025-10-11T11:17:01.888Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/8e/02/650adf160774a43c206011d23283d568d2dbcd43cf7b40dff0a880885b47/textual-0.89.1-py3-none-any.whl", hash = "sha256:0a5d214df6e951b4a2c421e13d0b608482882471c1e34ea74a3631adede8054f", size = 656019, upload-time = "2024-12-05T15:17:10.37Z" },
+    { url = "https://files.pythonhosted.org/packages/ff/2a/bca677b0b05ee77b4105f73db0d8ef231a9f1db154d69388abd5c73f9dcc/textual-6.3.0-py3-none-any.whl", hash = "sha256:ec908b4b008662e7670af4a3e7c773847066b0950b1c50126c72fa939b514c97", size = 711457, upload-time = "2025-10-11T11:16:59.754Z" },
 ]
 
 [[package]]
 name = "textual-dev"
-version = "1.0.1"
+version = "1.7.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "aiohttp", marker = "python_full_version < '3.12'" },
+    { name = "aiohttp" },
     { name = "click", version = "8.1.8", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
-    { name = "click", version = "8.3.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10' and python_full_version < '3.12'" },
-    { name = "msgpack", marker = "python_full_version < '3.12'" },
-    { name = "textual", marker = "python_full_version < '3.12'" },
-    { name = "typing-extensions", marker = "python_full_version < '3.12'" },
+    { name = "click", version = "8.3.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
+    { name = "msgpack" },
+    { name = "textual" },
+    { name = "textual-serve" },
+    { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/14/22/4a7f77f28f62d17c7a6dd9e0537f0e78c3fe42eb5a18e0ad2ad3245d5626/textual_dev-1.0.1.tar.gz", hash = "sha256:9f4c40655cbb56af7ee92805ef14fa24ae98ff8b0ae778c59de7222f1caa7281", size = 24018, upload-time = "2023-07-03T15:25:34.376Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/a1/d3/ed0b20f6de0af1b7062c402d59d256029c0daa055ad9e04c27471b450cdd/textual_dev-1.7.0.tar.gz", hash = "sha256:bf1a50eaaff4cd6a863535dd53f06dbbd62617c371604f66f56de3908220ccd5", size = 25935, upload-time = "2024-11-18T16:59:47.924Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/0c/df/d29d8b9309159aaadc6e9d8158c8cce79ec8bdbd524d03af7dcad9d69f17/textual_dev-1.0.1-py3-none-any.whl", hash = "sha256:419fc426c120f04f89ab0cb1aa88f7873dd7cdb9c21618e709175c8eaff6b566", size = 25460, upload-time = "2023-07-03T15:25:33.166Z" },
+    { url = "https://files.pythonhosted.org/packages/50/4b/3c1eb9cbc39f2f28d27e10ef2fe42bfe0cf3c2f8445a454c124948d6169b/textual_dev-1.7.0-py3-none-any.whl", hash = "sha256:a93a846aeb6a06edb7808504d9c301565f7f4bf2e7046d56583ed755af356c8d", size = 27221, upload-time = "2024-11-18T16:59:46.833Z" },
 ]
 
 [[package]]
@@ -1578,12 +1595,9 @@ polars = [
 
 [package.dev-dependencies]
 dev = [
-    { name = "numpy", version = "2.0.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
-    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
     { name = "pre-commit" },
     { name = "pyinstrument" },
-    { name = "textual" },
-    { name = "textual-dev", marker = "python_full_version < '3.12'" },
+    { name = "textual-dev" },
 ]
 static = [
     { name = "mypy" },
@@ -1597,6 +1611,7 @@ test = [
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "pytest-textual-snapshot" },
+    { name = "textual" },
 ]
 
 [package.metadata]
@@ -1614,11 +1629,9 @@ provides-extras = ["polars"]
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "numpy", specifier = ">=2,<3" },
     { name = "pre-commit", specifier = ">=3.3,<4" },
     { name = "pyinstrument", specifier = ">=5,<6" },
-    { name = "textual", specifier = "==0.89.1" },
-    { name = "textual-dev", marker = "python_full_version < '3.12'", specifier = "==1.0.1" },
+    { name = "textual-dev", specifier = "==1.7.0" },
 ]
 static = [
     { name = "mypy", specifier = ">=1.18.0,<2" },
@@ -1631,6 +1644,23 @@ test = [
     { name = "pytest", specifier = ">=7.3.1,<9.0.0" },
     { name = "pytest-asyncio", specifier = "==0.21.0" },
     { name = "pytest-textual-snapshot", specifier = "==0.4.0" },
+    { name = "textual", specifier = "==6.3.0" },
+]
+
+[[package]]
+name = "textual-serve"
+version = "1.1.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "aiohttp" },
+    { name = "aiohttp-jinja2" },
+    { name = "jinja2" },
+    { name = "rich" },
+    { name = "textual" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/27/41/09d5695b050d592ff58422be2ca5c9915787f59ff576ca91d9541d315406/textual_serve-1.1.2.tar.gz", hash = "sha256:0ccaf9b9df9c08d4b2d7a0887cad3272243ba87f68192c364f4bed5b683e4bd4", size = 892959, upload-time = "2025-04-16T12:11:41.746Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/7c/fb/0006f86960ab8a2f69c9f496db657992000547f94f53a2f483fd611b4bd2/textual_serve-1.1.2-py3-none-any.whl", hash = "sha256:147d56b165dccf2f387203fe58d43ce98ccad34003fe3d38e6d2bc8903861865", size = 447326, upload-time = "2025-04-16T12:11:43.176Z" },
 ]
 
 [[package]]
@@ -1724,9 +1754,9 @@ name = "yarl"
 version = "1.22.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "idna", marker = "python_full_version < '3.12'" },
-    { name = "multidict", marker = "python_full_version < '3.12'" },
-    { name = "propcache", marker = "python_full_version < '3.12'" },
+    { name = "idna" },
+    { name = "multidict" },
+    { name = "propcache" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/57/63/0c6ebca57330cd313f6102b16dd57ffaf3ec4c83403dcb45dbd15c6f3ea1/yarl-1.22.0.tar.gz", hash = "sha256:bebf8557577d4401ba8bd9ff33906f1376c877aa78d1fe216ad01b4d6745af71", size = 187169, upload-time = "2025-10-06T14:12:55.963Z" }
 wheels = [
