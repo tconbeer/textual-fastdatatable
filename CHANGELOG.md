@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+- Makes dependecies more exact to ensure installations use wheels for large dependencies (numpy, pyarrow, pandas, etc.).
+
 ## [0.12.0] - 2025-02-06
 
 - Catch overflow errors when casting arrow temporal types to python date and datetimes, and substitue date.max/min and datetime.max/min, instead of None.
