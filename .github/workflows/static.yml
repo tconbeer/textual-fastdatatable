@@ -2,6 +2,7 @@ name: "Perform Static Analysis"
 
 on:
   pull_request:
+  workflow_dispatch:
 
 # will cancel previous workflows triggered by the same event and for the same ref for PRs or same SHA otherwise
 concurrency:
@@ -10,44 +11,28 @@ concurrency:
 
 jobs:
   static:
-    name: Static Analysis - 3.11
+    name: Static Analysis
     runs-on: ubuntu-latest
     steps:
       - name: Check out Repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
         with:
-          persist-credentials: false
-      - name: Set up Python 3.11
-        uses: actions/setup-python@v5
+          version: "0.9.3"
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
         id: setup-python
         with:
-          python-version: "3.11"
-      - name: Load cached Poetry installation
-        id: cached-poetry-install
-        uses: actions/cache@v4
-        with:
-          path: ~/.local
-          key: poetry-${{ runner.os }}-${{ steps.setup-python.outputs.python-version }}-0
-      - name: Install Poetry
-        if: steps.cached-poetry-install.outputs.cache-hit != 'true'
-        uses: snok/install-poetry@v1
-        with:
-          version: 1.4.2
-          virtualenvs-create: true
-          virtualenvs-in-project: true
-          installer-parallel: true
-      - name: Load cached venv
-        id: cached-poetry-dependencies
-        uses: actions/cache@v4
-        with:
-          path: .venv
-          key: static-venv-${{ runner.os }}-${{ steps.setup-python.outputs.python-version }}-${{ hashFiles('**/poetry.lock') }}
+          python-version-file: ".python-version"
+
       - name: Install python dependencies
-        if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
-        run: poetry install --sync --no-interaction --without dev
+        run: uv sync --locked --group static --group test
+
       - name: Run analysis
         run: |
-          source .venv/bin/activate
-          ruff format --check
-          ruff check .
-          mypy
+          uv run --no-sync ruff format . --diff
+          uv run --no-sync ruff check .
+          uv run --no-sync mypy --no-incremental
