@@ -3,7 +3,6 @@ snapshot_report.html
 profile*.html
 results.md
 Pipfile
-.python-version
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -149,6 +148,12 @@ venv.bak/
 .mypy_cache/
 .dmypy.json
 dmypy.json
+
+# ruff
+.ruff_cache/
+
+# code
+.vscode
 
 # Pyre type checker
 .pyre/

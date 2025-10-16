@@ -1,5 +1,6 @@
 from textual.app import App, ComposeResult
 from textual.binding import Binding
+
 from textual_fastdatatable import ArrowBackend, DataTable
 
 # Shuffled around a bit to exercise sorting.

@@ -11,11 +11,12 @@ from textual.driver import Driver
 from textual.pilot import Pilot
 from textual.types import CSSPathType
 from textual.widgets import DataTable as BuiltinDataTable
+
 from textual_fastdatatable import ArrowBackend
 from textual_fastdatatable import DataTable as FastDataTable
 from textual_fastdatatable.backend import PolarsBackend
 
-BENCHMARK_DATA = Path(__file__).parent.parent.parent / "tests" / "data"
+BENCHMARK_DATA = Path(__file__).parent.parent / "tests" / "data"
 
 
 async def scroller(pilot: Pilot) -> None:

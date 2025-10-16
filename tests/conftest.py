@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Sequence, Type
 
 import pytest
+
 from textual_fastdatatable.backend import ArrowBackend, DataTableBackend, PolarsBackend
 
 

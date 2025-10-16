@@ -5,9 +5,10 @@ from pathlib import Path
 from textual.app import App, ComposeResult
 from textual.driver import Driver
 from textual.types import CSSPathType
+
 from textual_fastdatatable import DataTable
 
-BENCHMARK_DATA = Path(__file__).parent.parent.parent / "tests" / "data"
+BENCHMARK_DATA = Path(__file__).parent.parent / "tests" / "data"
 
 
 class ArrowBackendApp(App):

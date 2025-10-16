@@ -11,29 +11,36 @@ jobs:
   publish-package:
     if: ${{ github.event.pull_request.merged == true && startsWith(github.event.pull_request.head.ref, 'release/v') }}
     runs-on: ubuntu-latest
+    environment: publish
+    permissions:
+      id-token: write
 
     steps:
       - name: Check out repo main branch
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: main
+
       - name: Set up Python 3.10
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
-          python-version: "3.10"
-      - name: Install Poetry
-        uses: snok/install-poetry@v1
+          python-version-file: ".python-version"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
         with:
-          version: 1.6.1
-      - name: Configure poetry
-        run: poetry config --no-interaction pypi-token.pypi ${{ secrets.FASTDATATABLE_PYPI_TOKEN }}
+          version: "0.9.3"
+
       - name: Get project Version
         id: project_version
-        run: echo "project_version=$(poetry version --short)" >> $GITHUB_OUTPUT
+        run: echo "project_version=$(uv version --short)" >> $GITHUB_OUTPUT
+
       - name: Build package
-        run: poetry build --no-interaction
+        run: uv build --all-packages
+
       - name: Publish package to PyPI
-        run: poetry publish --no-interaction
+        uses: pypa/gh-action-pypi-publish@release/v1
+
       - name: Create a Github Release
         uses: softprops/action-gh-release@v2
         with:

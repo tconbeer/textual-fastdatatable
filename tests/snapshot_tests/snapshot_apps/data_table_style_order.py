@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from textual.app import App, ComposeResult
 from textual.widgets import Label
-from textual_fastdatatable import ArrowBackend, DataTable
 from typing_extensions import Literal
+
+from textual_fastdatatable import ArrowBackend, DataTable
 
 data = [
     "Severance",

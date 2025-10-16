@@ -16,38 +16,45 @@ jobs:
 
     steps:
       - name: Check out repo main branch
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: main
-      - name: Set up Python 3.10
-        uses: actions/setup-python@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
         with:
-          python-version: "3.10"
-      - name: Install Poetry
-        uses: snok/install-poetry@v1
+          python-version-file: ".python-version"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
         with:
-          version: 1.6.1
+          version: "0.9.3"
+
       - name: Create release branch
         run: |
           git checkout -b release/v${{ github.event.inputs.newVersion }}
           git push --set-upstream origin release/v${{ github.event.inputs.newVersion }}
+
       - name: Bump version
-        run: poetry version ${{ github.event.inputs.newVersion }} --no-interaction
+        run: uv version ${{ github.event.inputs.newVersion }}
+
       - name: Ensure package can be built
-        run: poetry build --no-interaction
+        run: uv build --all-packages
+
       - name: Update CHANGELOG
         uses: thomaseizinger/keep-a-changelog-new-release@v3
         with:
           version: ${{ github.event.inputs.newVersion }}
+
       - name: Commit Changes
-        uses: stefanzweifel/git-auto-commit-action@v5
+        uses: stefanzweifel/git-auto-commit-action@v6
         with:
           commit_message: Bumps version to ${{ github.event.inputs.newVersion }}
+
       - name: Create pull request into main
-        uses: thomaseizinger/create-pull-request@1.3.1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: thomaseizinger/create-pull-request@1.4.0
         with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
           head: release/v${{ github.event.inputs.newVersion }}
           base: main
           title: v${{ github.event.inputs.newVersion }}
@@ -55,4 +62,3 @@ jobs:
             This PR was automatically generated. It bumps the version number
             in pyproject.toml and updates CHANGELOG.md. You may have to close
             this PR and reopen it to get the required checks to run.
-

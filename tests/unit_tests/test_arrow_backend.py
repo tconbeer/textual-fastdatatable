@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Sequence
 
 import pyarrow as pa
+
 from textual_fastdatatable import ArrowBackend
 
 

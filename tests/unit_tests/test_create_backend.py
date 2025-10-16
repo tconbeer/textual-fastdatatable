@@ -1,6 +1,7 @@
 from datetime import date, datetime
 
 import pyarrow as pa
+
 from textual_fastdatatable.backend import create_backend
 
 MAX_32BIT_INT = 2**31 - 1

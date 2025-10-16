@@ -57,7 +57,7 @@ from typing_extensions import Literal, Self
 
 from textual_fastdatatable.backend import DataTableBackend, create_backend
 from textual_fastdatatable.column import Column
-from textual_fastdatatable.formatter import cell_formatter, measure_width
+from textual_fastdatatable.format import cell_formatter, measure_width
 
 CursorType = Literal["cell", "range", "row", "column", "none"]
 """The valid types of cursors for 
