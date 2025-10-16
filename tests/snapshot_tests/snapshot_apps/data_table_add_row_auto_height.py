@@ -1,6 +1,7 @@
 from rich.panel import Panel
 from rich.text import Text
 from textual.app import App
+
 from textual_fastdatatable import DataTable
 
 

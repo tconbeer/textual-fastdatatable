@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from textual.app import App, ComposeResult
+
 from textual_fastdatatable import ArrowBackend, DataTable
 
 CSS_PATH = (Path(__file__) / "../datatable_hot_reloading.tcss").resolve()

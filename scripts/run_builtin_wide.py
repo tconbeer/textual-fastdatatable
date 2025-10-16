@@ -8,7 +8,7 @@ from textual.driver import Driver
 from textual.types import CSSPathType
 from textual.widgets import DataTable
 
-BENCHMARK_DATA = Path(__file__).parent.parent.parent / "tests" / "data"
+BENCHMARK_DATA = Path(__file__).parent.parent / "tests" / "data"
 
 
 class BuiltinApp(App):

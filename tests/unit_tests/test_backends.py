@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pytest
+
 from textual_fastdatatable.backend import DataTableBackend
 
 

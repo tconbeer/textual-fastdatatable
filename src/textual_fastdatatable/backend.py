@@ -22,7 +22,7 @@ import pyarrow.parquet as pq
 import pyarrow.types as pt
 from rich.console import Console
 
-from textual_fastdatatable.formatter import measure_width
+from textual_fastdatatable.format import measure_width
 
 AutoBackendType = Any
 
