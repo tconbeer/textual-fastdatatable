@@ -4,7 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.14.0] - 2025-10-25
+
 - Fixes column rendering bug to make compatible with recent versions of Textual.
+- Updates pyarrow and numpy dependencies to provide compatibility with Python 3.14
 
 ## [0.13.0] - 2025-10-16
 
@@ -161,7 +164,8 @@ All notable changes to this project will be documented in this file.
 
 - Initial release. Adds DataTable and ArrowBackend, which is 1000x faster for datasets of 500k records or more.
 
-[unreleased]: https://github.com/tconbeer/textual-fastdatatable/compare/0.13.0...HEAD
+[unreleased]: https://github.com/tconbeer/textual-fastdatatable/compare/0.14.0...HEAD
+[0.14.0]: https://github.com/tconbeer/textual-fastdatatable/compare/0.13.0...0.14.0
 [0.13.0]: https://github.com/tconbeer/textual-fastdatatable/compare/0.12.0...0.13.0
 [0.12.0]: https://github.com/tconbeer/textual-fastdatatable/compare/0.11.0...0.12.0
 [0.11.0]: https://github.com/tconbeer/textual-fastdatatable/compare/0.10.0...0.11.0
