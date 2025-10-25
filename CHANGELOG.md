@@ -7,6 +7,7 @@ All notable changes to this project will be documented in this file.
 ## [0.14.0] - 2025-10-25
 
 - Fixes column rendering bug to make compatible with recent versions of Textual.
+- Updates pyarrow and numpy dependencies to provide compatibility with Python 3.14
 
 ## [0.13.0] - 2025-10-16
 
