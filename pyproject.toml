@@ -45,7 +45,7 @@ static = [
 test = [
     "textual==6.3.0",
     "pytest>=7.3.1,<9.0.0",
-    "pytest-asyncio==0.21.0",
+    "pytest-asyncio==1.2.0",
     "pytest-textual-snapshot==0.4.0",
     "polars==1.34.0",
 ]
