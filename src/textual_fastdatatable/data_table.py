@@ -2545,7 +2545,10 @@ class DataTable(ScrollView, can_focus=True):
                     (str, float, Decimal, int, datetime, time, date, timedelta),
                 ):
                     self._tooltip_cache[cache_key] = cell_formatter(
-                        raw_value, null_rep=self.null_rep, col=column
+                        raw_value,
+                        null_rep=self.null_rep,
+                        col=column,
+                        render_markup=self.render_markup,
                     )
                 else:
                     self._tooltip_cache[cache_key] = Pretty(raw_value)

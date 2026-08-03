@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+- Fixes the crash reported in [tconbeer/harlequin#933](https://github.com/tconbeer/harlequin/issues/933) by forward `render_markup` in tooltip path (thank you [@crossi-dev](https://github.com/crossi-dev)!).
+
 ## [0.14.0] - 2025-10-25
 
 - Fixes column rendering bug to make compatible with recent versions of Textual.
