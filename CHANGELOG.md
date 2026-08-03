@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 - Fixes the crash reported in [tconbeer/harlequin#933](https://github.com/tconbeer/harlequin/issues/933) by forward `render_markup` in tooltip path (thank you [@crossi-dev](https://github.com/crossi-dev)!).
+- Fixes the crash reported in [tconbeer/harlequin#974](https://github.com/tconbeer/harlequin/issues/974) by escaping and truncating bytes values in cell formatter (thank you [@Pawansingh3889](https://github.com/Pawansingh3889)!).
 
 ## [0.14.0] - 2025-10-25
 
