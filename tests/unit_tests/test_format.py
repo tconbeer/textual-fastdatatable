@@ -18,7 +18,8 @@ def _can_render(renderable: object) -> bool:
 
 
 def test_cell_formatter_json_null_render_markup_false() -> None:
-    """A JSON string containing [null] must not produce markup spans when render_markup=False.
+    """A JSON string containing [null] must not produce markup spans when
+    render_markup=False.
 
     Regression test for https://github.com/tconbeer/harlequin/issues/933:
     hovering a cell whose value is a JSON string with a ``[null]`` array element
