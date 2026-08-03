@@ -89,6 +89,16 @@ def cell_formatter(
     elif isinstance(obj, timedelta):
         return Align(str(obj), align="right")
 
+    elif isinstance(obj, (bytes, bytearray, memoryview)):
+        # binary values (e.g. varbinary columns) can contain sequences like
+        # [/...] that Rich would try to parse as markup; show an escaped,
+        # truncated preview instead. See tconbeer/harlequin#974.
+        data = bytes(obj)
+        preview = repr(data[:32])
+        if len(data) > 32:
+            preview = f"{preview} (+{len(data) - 32} bytes)"
+        return escape(preview)
+
     elif not is_renderable(obj):
         return str(obj)
 
