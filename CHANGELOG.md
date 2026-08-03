@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-08-03
+
+- Fixes the crash reported in [tconbeer/harlequin#933](https://github.com/tconbeer/harlequin/issues/933) by forward `render_markup` in tooltip path (thank you [@crossi-dev](https://github.com/crossi-dev)!).
+- Fixes the crash reported in [tconbeer/harlequin#974](https://github.com/tconbeer/harlequin/issues/974) by escaping and truncating bytes values in cell formatter (thank you [@Pawansingh3889](https://github.com/Pawansingh3889)!).
+
 ## [0.14.0] - 2025-10-25
 
 - Fixes column rendering bug to make compatible with recent versions of Textual.
@@ -164,7 +169,8 @@ All notable changes to this project will be documented in this file.
 
 - Initial release. Adds DataTable and ArrowBackend, which is 1000x faster for datasets of 500k records or more.
 
-[unreleased]: https://github.com/tconbeer/textual-fastdatatable/compare/0.14.0...HEAD
+[unreleased]: https://github.com/tconbeer/textual-fastdatatable/compare/0.15.0...HEAD
+[0.15.0]: https://github.com/tconbeer/textual-fastdatatable/compare/0.14.0...0.15.0
 [0.14.0]: https://github.com/tconbeer/textual-fastdatatable/compare/0.13.0...0.14.0
 [0.13.0]: https://github.com/tconbeer/textual-fastdatatable/compare/0.12.0...0.13.0
 [0.12.0]: https://github.com/tconbeer/textual-fastdatatable/compare/0.11.0...0.12.0
