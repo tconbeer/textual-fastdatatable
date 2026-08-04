@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+- `DataTable(data=...)` and `create_backend()` now accept a pandas DataFrame, which is
+  converted with `pa.Table.from_pandas()` and displayed by the `ArrowBackend`. No extra is
+  required. The frame's index is not shown; call `df.reset_index()` first to display it as
+  a column.
 - Drops support for Python 3.9; the minimum supported version is now Python 3.10.
 - Requires Textual >= 7.3.0.
 - **Breaking:** Drops the `numpy` and `pandas` dependencies. This package does not import

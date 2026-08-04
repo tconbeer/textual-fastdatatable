@@ -132,6 +132,18 @@ class Table(_Tabular):
         batches: Iterable[RecordBatch],
         schema: Schema | None = None,
     ) -> "Table": ...
+    @classmethod
+    def from_pandas(
+        cls,
+        # a pandas DataFrame, typed as Any so that these stubs don't drag
+        # pandas-stubs into the static analysis environment
+        df: Any,
+        schema: Schema | None = None,
+        preserve_index: bool | None = None,
+        nthreads: int | None = None,
+        columns: list[str] | None = None,
+        safe: bool = True,
+    ) -> "Table": ...
     def to_batches(self) -> list[RecordBatch]: ...
 
 def scalar(value: Any, type: DataType) -> Scalar: ...  # noqa: A002

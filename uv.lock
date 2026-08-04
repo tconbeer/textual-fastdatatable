@@ -1642,6 +1642,7 @@ static = [
     { name = "ruff" },
 ]
 test = [
+    { name = "pandas" },
     { name = "polars" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
@@ -1673,6 +1674,7 @@ static = [
     { name = "ruff", specifier = ">=0.14,<0.15" },
 ]
 test = [
+    { name = "pandas", specifier = ">=2,<3" },
     { name = "polars", specifier = "==1.34.0" },
     { name = "pytest", specifier = ">=7.3.1,<9.0.0" },
     { name = "pytest-asyncio", specifier = "==1.2.0" },
