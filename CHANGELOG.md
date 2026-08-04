@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+- Drops support for Python 3.9; the minimum supported version is now Python 3.10.
+- Requires Textual >= 7.3.0.
+- **Breaking:** Drops the `numpy` and `pandas` dependencies. This package does not import
+  either one; they were pinned to keep resolvers away from versions that build from source.
+  `numpy` was pinned when pyarrow still required it (pyarrow dropped that requirement in
+  18.0.0, below this package's floor), and `pandas` was only ever used by the benchmark
+  script, where it now lives. Installs are correspondingly smaller. Dataframes are still
+  supported through `polars`, via the `polars` extra.
+- Simplifies the remaining wheel pin for pyarrow: the upper bounds are gone, so installs can
+  pick up newer releases, and each supported Python still gets a floor that publishes
+  wheels for it.
+- Adds a test that resolves this project's dependencies for every supported Python (3.10 -
+  3.14) and platform (Linux, macOS, and Windows, on x86_64 and arm64) with wheels only.
+
 ## [0.15.0] - 2026-08-03
 
 - Fixes the crash reported in [tconbeer/harlequin#933](https://github.com/tconbeer/harlequin/issues/933) by forward `render_markup` in tooltip path (thank you [@crossi-dev](https://github.com/crossi-dev)!).
