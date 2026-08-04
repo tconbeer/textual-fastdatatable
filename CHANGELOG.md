@@ -4,25 +4,19 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Features
 - `DataTable(data=...)` and `create_backend()` now accept a pandas DataFrame, which is
-  converted with `pa.Table.from_pandas()` and displayed by the `ArrowBackend`. No extra is
-  required. The frame's index is not shown; call `df.reset_index()` first to display it as
-  a column.
-- Drops support for Python 3.9; the minimum supported version is now Python 3.10.
-- Requires Textual >= 7.3.0.
-- **Breaking:** Drops the `numpy` and `pandas` dependencies. This package does not import
-  either one; they were pinned to keep resolvers away from versions that build from source.
-  `numpy` was pinned when pyarrow still required it (pyarrow dropped that requirement in
-  18.0.0, below this package's floor), and `pandas` was only ever used by the benchmark
-  script, where it now lives. Installs are correspondingly smaller. Dataframes are still
-  supported through `polars`, via the `polars` extra.
-- Simplifies the remaining wheel pin for pyarrow: the upper bounds are gone, so installs can
-  pick up newer releases, and each supported Python still gets a floor that publishes
-  wheels for it.
-- Adds a test that resolves this project's dependencies for every supported Python (3.10 -
-  3.14) and platform (Linux, macOS, and Windows, on x86_64 and arm64) with wheels only.
+  converted with the `ArrowBackend`.
 - Copying a selection is now bound to `super+c` (`cmd+c`) as well as `ctrl+c`, matching the
   copy bindings Textual added in 7.3.0 for terminals that report the command key.
+
+### Dependency Changes (Breaking!)
+- Drops support for Python 3.9; the minimum supported version is now Python 3.10.
+- Requires Textual >= 7.3.0.
+- Drops the `numpy` and `pandas` dependencies.
+- `pyarrow` upper bounds have been removed.
+- Adds a test that resolves this project's dependencies for every supported Python (3.10 -
+  3.14) and platform (Linux, macOS, and Windows, on x86_64 and arm64) with wheels only.
 - Declares `typing-extensions` as a dependency; it was imported but only installed as a
   transitive dependency of Textual.
 

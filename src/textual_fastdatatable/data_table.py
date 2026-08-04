@@ -1334,9 +1334,7 @@ class DataTable(ScrollView, can_focus=True):
         Returns:
             The `DataTable` instance.
         """
-        # TODO: make Backend optional and reactive? Until then the body below the
-        # raise was unreachable, so it lived on referring to state this fork no
-        # longer keeps (row/column key lookups, per-row metadata).
+        # TODO: make Backend optional and reactive?
         raise NotImplementedError("Unmount this table and mount a new one instead.")
 
     def add_column(
