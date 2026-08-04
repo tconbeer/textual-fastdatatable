@@ -601,7 +601,7 @@ if _HAS_POLARS:
 
         def append_rows(self, records: Iterable[Iterable[Any]]) -> list[int]:
             rows_to_add = pl.from_dicts(
-                [dict(zip(self.data.columns, row)) for row in records]
+                [dict(zip(self.data.columns, row, strict=False)) for row in records]
             )
             indicies = list(range(self.row_count, self.row_count + len(rows_to_add)))
             self.data = pl.concat([self.data, rows_to_add])

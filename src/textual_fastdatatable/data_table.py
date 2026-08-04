@@ -1162,7 +1162,9 @@ class DataTable(ScrollView, can_focus=True):
                 self._label_column.content_width, label_content_width
             )
 
-            for column, renderable in zip(self.ordered_columns, cells_in_row):
+            for column, renderable in zip(
+                self.ordered_columns, cells_in_row, strict=False
+            ):
                 content_width = measure(console, renderable, 1)
                 column.content_width = max(column.content_width, content_width)
 
@@ -1736,7 +1738,7 @@ class DataTable(ScrollView, can_focus=True):
                 max_content_width=self.max_column_content_width,
             )
             for label, width, content_width in zip(
-                labels, widths, column_content_widths
+                labels, widths, column_content_widths, strict=False
             )
         ]
         return self._ordered_columns

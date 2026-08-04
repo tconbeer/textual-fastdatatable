@@ -153,6 +153,6 @@ if __name__ == "__main__":
             avg_elapsed = [sum(app_times) / tries for app_times in elapsed]
             formatted = [
                 f"{fp:7,.3f}s / {el:7,.3f}s"
-                for fp, el in zip(avg_first_paint, avg_elapsed)
+                for fp, el in zip(avg_first_paint, avg_elapsed, strict=True)
             ]
             print(f"{p} | {' | '.join(formatted)}", file=f)
