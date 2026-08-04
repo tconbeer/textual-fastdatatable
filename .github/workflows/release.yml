@@ -16,7 +16,7 @@ jobs:
 
     steps:
       - name: Check out repo main branch
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           ref: main
 
@@ -26,7 +26,7 @@ jobs:
           python-version-file: ".python-version"
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v6
+        uses: astral-sh/setup-uv@v7
         with:
           version: "0.9.3"
 
@@ -47,7 +47,7 @@ jobs:
           version: ${{ github.event.inputs.newVersion }}
 
       - name: Commit Changes
-        uses: stefanzweifel/git-auto-commit-action@v6
+        uses: stefanzweifel/git-auto-commit-action@v7
         with:
           commit_message: Bumps version to ${{ github.event.inputs.newVersion }}
 
