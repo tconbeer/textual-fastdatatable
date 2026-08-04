@@ -2,7 +2,7 @@
 
 name = "textual-fastdatatable"
 version = "0.15.0"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 description = "A performance-focused reimplementation of Textual's DataTable widget, with a pluggable data storage backend."
 authors = [
     { name = "Ted Conbeer", email = "tconbeer@users.noreply.github.com" }
@@ -10,18 +10,14 @@ authors = [
 license = "MIT"
 readme = "README.md"
 dependencies = [
-    "textual>=0.89.1",
+    "textual>=7.3.0",
+    "typing-extensions>=4.4.0", # typing.Self is 3.11+
     "tzdata>=2023; sys_platform == 'win32'", # arrow timestamptz support on windows
 
-    # wheel pins: these packages don't build wheels for all Pythons
-    "numpy>=2.0.0,<2.1.0; python_version < '3.10'",
-    "numpy>=2.1.0,<2.3.0; python_version >= '3.10' and python_version < '3.14'",
-    "numpy>=2.3.0; python_version >= '3.14'",
-
-    "pandas>=2.2.1,<3; python_version < '3.13'",
-    "pandas>=2.2.3,<3; python_version >= '3.13'",
-
-    "pyarrow>=18.1.0,<22; python_version < '3.14'",
+    # wheel pin: pyarrow adds wheels for a new Python in the release that adds
+    # support for it, so each supported Python needs a floor that has a wheel.
+    # tests/unit_tests/test_wheels.py checks these floors against the index.
+    "pyarrow>=18.1.0; python_version < '3.14'",
     "pyarrow>=22.0.0; python_version >= '3.14'",
 ]
 
@@ -36,18 +32,22 @@ dev = [
     "pre-commit>=3.3,<4",
     "textual-dev==1.7.0",
     "pyinstrument>=5,<6",
+    # scripts/benchmark.py loads the same data with pandas and polars, to compare
+    # this widget against Textual's built-in DataTable
+    "pandas>=2,<3",
+    "polars>=1,<2",
 ]
 static = [
     "ruff>=0.14,<0.15",
     "mypy>=1.18.0,<2",
-    "pandas-stubs>=2,<3",
 ]
 test = [
-    "textual==6.3.0",
+    "textual==7.5.0",
     "pytest>=7.3.1,<9.0.0",
     "pytest-asyncio==1.2.0",
     "pytest-textual-snapshot==1.1.0",
     "polars==1.34.0",
+    "pandas>=2,<3", # to test that pandas DataFrames are accepted
 ]
 
 
@@ -81,7 +81,7 @@ only-include = [
 
 [tool.ruff]
 
-target-version = "py39"
+target-version = "py310"
 
 
 [tool.ruff.lint]
@@ -91,7 +91,7 @@ select = ["A", "B", "E", "F", "I"]
 
 [tool.mypy]
 
-python_version = "3.9"
+python_version = "3.10"
 files = [
     "src/**/*.py",
     "tests/unit_tests/**/*.py"

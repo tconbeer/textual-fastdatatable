@@ -52,7 +52,19 @@ AutoBackendType = Union[
     str, # path to parquet only
     Sequence[Iterable[Any]],
     Mapping[str, Sequence[Any]],
+    pl.DataFrame, # requires the polars extra
+    pd.DataFrame,
 ]
+```
+
+A pandas DataFrame is converted with `pa.Table.from_pandas` and displayed by the
+`ArrowBackend`, so it needs no extra. The conversion drops the frame's index; call
+`df.reset_index()` first if you want to see it as a column.
+
+A polars DataFrame is displayed by the `PolarsBackend`, which requires the extra:
+
+```bash
+pip install textual-fastdatatable[polars]
 ```
 
 To override the column labels and widths supplied by the backend:

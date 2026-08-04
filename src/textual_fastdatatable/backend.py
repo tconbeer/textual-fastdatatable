@@ -1,19 +1,12 @@
 from __future__ import annotations
 
+import sys
 from abc import ABC, abstractmethod
+from collections.abc import Iterable, Mapping, Sequence
 from contextlib import suppress
 from datetime import date, datetime
 from pathlib import Path
-from typing import (
-    Any,
-    Dict,
-    Generic,
-    Iterable,
-    Literal,
-    Mapping,
-    Sequence,
-    TypeVar,
-)
+from typing import Any, Generic, Literal, TypeVar
 
 import pyarrow as pa
 import pyarrow.compute as pc
@@ -46,6 +39,8 @@ def create_backend(
         return ArrowBackend.from_batches(data, max_rows=max_rows)
     if _HAS_POLARS and isinstance(data, pl.DataFrame):
         return PolarsBackend.from_dataframe(data, max_rows=max_rows)
+    if _is_pandas_dataframe(data):
+        return ArrowBackend.from_pandas(data, max_rows=max_rows)
 
     if isinstance(data, Path) or isinstance(data, str):
         data = Path(data)
@@ -70,8 +65,19 @@ def create_backend(
     raise TypeError(
         f"Cannot automatically create backend for data of type: {type(data)}. "
         f"Data must be of type: Union[pa.Table, pa.RecordBatch, Path, str, "
-        "Sequence[Iterable[Any]], Mapping[str, Sequence[Any]], pl.DataFrame",
+        "Sequence[Iterable[Any]], Mapping[str, Sequence[Any]], pl.DataFrame, "
+        "pd.DataFrame",
     )
+
+
+def _is_pandas_dataframe(data: Any) -> bool:
+    """Is this a pandas DataFrame?
+
+    Asks sys.modules rather than importing pandas: this package does not depend
+    on pandas, and anyone holding a DataFrame has already imported it.
+    """
+    pandas = sys.modules.get("pandas")
+    return pandas is not None and isinstance(data, pandas.DataFrame)
 
 
 def _is_iterable(item: Any) -> bool:
@@ -271,6 +277,16 @@ class ArrowBackend(DataTableBackend[pa.Table]):
         return cls(tbl, max_rows=max_rows)
 
     @classmethod
+    def from_pandas(cls, frame: Any, max_rows: int | None = None) -> "ArrowBackend":
+        """Create a backend from a pandas DataFrame.
+
+        The frame's index is not displayed; call `df.reset_index()` first to
+        show it as a column.
+        """
+        tbl = pa.Table.from_pandas(frame, preserve_index=False)
+        return cls(tbl, max_rows=max_rows)
+
+    @classmethod
     def from_pydict(
         cls, data: Mapping[str, Sequence[Any]], max_rows: int | None = None
     ) -> "ArrowBackend":
@@ -328,7 +344,7 @@ class ArrowBackend(DataTableBackend[pa.Table]):
 
     def get_row_at(self, index: int) -> Sequence[Any]:
         try:
-            row: Dict[str, Any] = self.data.slice(index, length=1).to_pylist()[0]
+            row: dict[str, Any] = self.data.slice(index, length=1).to_pylist()[0]
         except OverflowError:
             return [
                 self._handle_overflow(self.data[i][index])
@@ -601,7 +617,7 @@ if _HAS_POLARS:
 
         def append_rows(self, records: Iterable[Iterable[Any]]) -> list[int]:
             rows_to_add = pl.from_dicts(
-                [dict(zip(self.data.columns, row)) for row in records]
+                [dict(zip(self.data.columns, row, strict=False)) for row in records]
             )
             indicies = list(range(self.row_count, self.row_count + len(rows_to_add)))
             self.data = pl.concat([self.data, rows_to_add])

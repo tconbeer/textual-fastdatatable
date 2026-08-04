@@ -4,6 +4,22 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Features
+- `DataTable(data=...)` and `create_backend()` now accept a pandas DataFrame, which is
+  converted with the `ArrowBackend`.
+- Copying a selection is now bound to `super+c` (`cmd+c`) as well as `ctrl+c`, matching the
+  copy bindings Textual added in 7.3.0 for terminals that report the command key.
+
+### Dependency Changes (Breaking!)
+- Drops support for Python 3.9; the minimum supported version is now Python 3.10.
+- Requires Textual >= 7.3.0.
+- Drops the `numpy` and `pandas` dependencies.
+- `pyarrow` upper bounds have been removed.
+- Adds a test that resolves this project's dependencies for every supported Python (3.10 -
+  3.14) and platform (Linux, macOS, and Windows, on x86_64 and arm64) with wheels only.
+- Declares `typing-extensions` as a dependency; it was imported but only installed as a
+  transitive dependency of Textual.
+
 ## [0.15.0] - 2026-08-03
 
 - Fixes the crash reported in [tconbeer/harlequin#933](https://github.com/tconbeer/harlequin/issues/933) by forward `render_markup` in tooltip path (thank you [@crossi-dev](https://github.com/crossi-dev)!).

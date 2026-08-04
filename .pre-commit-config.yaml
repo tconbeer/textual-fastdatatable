@@ -10,10 +10,10 @@ repos:
     hooks:
       - id: mypy
         additional_dependencies:
-          - textual==0.89.1
+          - textual==7.5.0
           - pytest
           - pyarrow-stubs
-          - pandas-stubs
+          - pandas-stubs # scripts/benchmark.py imports pandas
           - polars>=0.20
         exclude: "tests/snapshot_tests/"
         args:
