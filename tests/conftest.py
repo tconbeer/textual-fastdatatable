@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Sequence, Type
+from collections.abc import Sequence
 
 import pytest
 
@@ -27,7 +27,7 @@ def records(pydict: dict[str, Sequence[str | int]]) -> list[tuple[str | int, ...
 
 @pytest.fixture(params=[ArrowBackend, PolarsBackend])
 def backend(
-    request: Type[pytest.FixtureRequest], pydict: dict[str, Sequence[str | int]]
+    request: type[pytest.FixtureRequest], pydict: dict[str, Sequence[str | int]]
 ) -> DataTableBackend:
     backend_cls = request.param
     assert issubclass(backend_cls, (ArrowBackend, PolarsBackend))

@@ -1620,6 +1620,7 @@ dependencies = [
     { name = "pyarrow", version = "21.0.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.14'" },
     { name = "pyarrow", version = "22.0.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.14'" },
     { name = "textual" },
+    { name = "typing-extensions" },
     { name = "tzdata", marker = "sys_platform == 'win32'" },
 ]
 
@@ -1654,6 +1655,7 @@ requires-dist = [
     { name = "pyarrow", marker = "python_full_version < '3.14'", specifier = ">=18.1.0" },
     { name = "pyarrow", marker = "python_full_version >= '3.14'", specifier = ">=22.0.0" },
     { name = "textual", specifier = ">=7.3.0" },
+    { name = "typing-extensions", specifier = ">=4.4.0" },
     { name = "tzdata", marker = "sys_platform == 'win32'", specifier = ">=2023" },
 ]
 provides-extras = ["polars"]

@@ -1,19 +1,11 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Iterable, Mapping, Sequence
 from contextlib import suppress
 from datetime import date, datetime
 from pathlib import Path
-from typing import (
-    Any,
-    Dict,
-    Generic,
-    Iterable,
-    Literal,
-    Mapping,
-    Sequence,
-    TypeVar,
-)
+from typing import Any, Generic, Literal, TypeVar
 
 import pyarrow as pa
 import pyarrow.compute as pc
@@ -328,7 +320,7 @@ class ArrowBackend(DataTableBackend[pa.Table]):
 
     def get_row_at(self, index: int) -> Sequence[Any]:
         try:
-            row: Dict[str, Any] = self.data.slice(index, length=1).to_pylist()[0]
+            row: dict[str, Any] = self.data.slice(index, length=1).to_pylist()[0]
         except OverflowError:
             return [
                 self._handle_overflow(self.data[i][index])

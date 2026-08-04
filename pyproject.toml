@@ -11,6 +11,7 @@ license = "MIT"
 readme = "README.md"
 dependencies = [
     "textual>=7.3.0",
+    "typing-extensions>=4.4.0", # typing.Self is 3.11+
     "tzdata>=2023; sys_platform == 'win32'", # arrow timestamptz support on windows
 
     # wheel pin: pyarrow adds wheels for a new Python in the release that adds

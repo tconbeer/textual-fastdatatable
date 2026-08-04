@@ -25,10 +25,11 @@
 from __future__ import annotations
 
 import functools
+from collections.abc import Iterable
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 from itertools import chain, zip_longest
-from typing import Any, ClassVar, Iterable, NamedTuple, Tuple, Union
+from typing import Any, ClassVar, Literal, NamedTuple
 
 import rich.repr
 from rich.console import RenderableType
@@ -39,8 +40,6 @@ from rich.style import Style
 from rich.text import Text, TextType
 from textual import events, on
 from textual._segment_tools import line_crop
-from textual._two_way_dict import TwoWayDict
-from textual._types import SegmentLines
 from textual.binding import Binding, BindingType
 from textual.cache import LRUCache
 from textual.color import Color
@@ -53,32 +52,33 @@ from textual.renderables.styled import Styled
 from textual.scroll_view import ScrollView
 from textual.strip import Strip
 from textual.widget import PseudoClasses
-from typing_extensions import Literal, Self
+from typing_extensions import Self
 
 from textual_fastdatatable.backend import DataTableBackend, create_backend
 from textual_fastdatatable.column import Column
 from textual_fastdatatable.format import cell_formatter, measure_width
 
 CursorType = Literal["cell", "range", "row", "column", "none"]
-"""The valid types of cursors for 
+"""The valid types of cursors for
 [`DataTable.cursor_type`][textual.widgets.DataTable.cursor_type]."""
-TooltipCacheKey = Tuple[int, int, int]
-CellCacheKey = Tuple[int, int, Style, bool, bool, bool, bool, int, PseudoClasses]
-LineCacheKey = Tuple[
+SegmentLines = list[list[Segment]]
+TooltipCacheKey = tuple[int, int, int]
+CellCacheKey = tuple[int, int, Style, bool, bool, bool, bool, int, PseudoClasses]
+LineCacheKey = tuple[
     int,
     int,
     int,
     int,
     Coordinate,
     Coordinate,
-    Union[Coordinate, None],
+    Coordinate | None,
     Style,
     CursorType,
     bool,
     int,
     PseudoClasses,
 ]
-RowCacheKey = Tuple[
+RowCacheKey = tuple[
     int,
     int,
     int,
@@ -86,7 +86,7 @@ RowCacheKey = Tuple[
     Style,
     Coordinate,
     Coordinate,
-    Union[Coordinate, None],
+    Coordinate | None,
     CursorType,
     bool,
     bool,
@@ -156,7 +156,7 @@ class DataTable(ScrollView, can_focus=True):
         Binding("ctrl+shift+home", "cursor_table_start(True)", "Home", show=False),
         Binding("ctrl+shift+end", "cursor_table_end(True)", "End", show=False),
         Binding("ctrl+a", "select_all", "Select All", show=False),
-        Binding("ctrl+c", "copy_selection", "Copy", show=False),
+        Binding("ctrl+c,super+c", "copy_selection", "Copy", show=False),
     ]
     """
     | Key(s) | Description |
@@ -237,11 +237,6 @@ class DataTable(ScrollView, can_focus=True):
 
     DataTable > .datatable--fixed-cursor {
         background: $secondary 92%;
-        color: $text;
-    }
-
-    DataTable > .datatable--header-cursor {
-        background: $secondary-darken-1;
         color: $text;
     }
 
@@ -1339,28 +1334,10 @@ class DataTable(ScrollView, can_focus=True):
         Returns:
             The `DataTable` instance.
         """
-        # TODO: make Backend optional and reactive?
+        # TODO: make Backend optional and reactive? Until then the body below the
+        # raise was unreachable, so it lived on referring to state this fork no
+        # longer keeps (row/column key lookups, per-row metadata).
         raise NotImplementedError("Unmount this table and mount a new one instead.")
-        self._clear_caches()
-        self._y_offsets.clear()
-        self._data.clear()
-        self.rows.clear()
-        self._row_locations = TwoWayDict({})
-        if columns:
-            self.columns.clear()
-            self._column_locations = TwoWayDict({})
-        self._require_update_dimensions = True
-        self.cursor_coordinate = Coordinate(0, 0)
-        self.selection_anchor_coordinate = None
-        self.hover_coordinate = Coordinate(0, 0)
-        self._label_column = Column(self._label_column_key, Text(), auto_width=True)
-        self._labelled_row_exists = False
-        self.refresh()
-        self.scroll_x = 0
-        self.scroll_y = 0
-        self.scroll_target_x = 0
-        self.scroll_target_y = 0
-        return self
 
     def add_column(
         self,
