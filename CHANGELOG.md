@@ -4,13 +4,17 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-08-05
+
 ### Features
+
 - `DataTable(data=...)` and `create_backend()` now accept a pandas DataFrame, which is
   converted with the `ArrowBackend`.
 - Copying a selection is now bound to `super+c` (`cmd+c`) as well as `ctrl+c`, matching the
   copy bindings Textual added in 7.3.0 for terminals that report the command key.
 
 ### Dependency Changes (Breaking!)
+
 - Drops support for Python 3.9; the minimum supported version is now Python 3.10.
 - Requires Textual >= 7.3.0.
 - Drops the `numpy` and `pandas` dependencies.
@@ -185,7 +189,8 @@ All notable changes to this project will be documented in this file.
 
 - Initial release. Adds DataTable and ArrowBackend, which is 1000x faster for datasets of 500k records or more.
 
-[unreleased]: https://github.com/tconbeer/textual-fastdatatable/compare/0.15.0...HEAD
+[unreleased]: https://github.com/tconbeer/textual-fastdatatable/compare/0.16.0...HEAD
+[0.16.0]: https://github.com/tconbeer/textual-fastdatatable/compare/0.15.0...0.16.0
 [0.15.0]: https://github.com/tconbeer/textual-fastdatatable/compare/0.14.0...0.15.0
 [0.14.0]: https://github.com/tconbeer/textual-fastdatatable/compare/0.13.0...0.14.0
 [0.13.0]: https://github.com/tconbeer/textual-fastdatatable/compare/0.12.0...0.13.0

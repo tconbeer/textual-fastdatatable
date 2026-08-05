@@ -1614,7 +1614,7 @@ wheels = [
 
 [[package]]
 name = "textual-fastdatatable"
-version = "0.15.0"
+version = "0.16.0"
 source = { editable = "." }
 dependencies = [
     { name = "pyarrow", version = "21.0.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.14'" },
