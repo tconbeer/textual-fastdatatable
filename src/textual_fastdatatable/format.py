@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
+from itertools import chain
 from typing import cast
 
 from rich.align import Align
@@ -125,18 +126,20 @@ def truncate_renderable(
     if max_lines < 2 or max_width < 1:
         return renderable
     options = console.options.update(width=max_width, height=None, overflow="fold")
-    lines = console.render_lines(renderable, options, pad=False, new_lines=False)
+    # new_lines=True terminates every line, including the last: Textual sizes a
+    # renderable by counting its newlines, and would otherwise clip the marker.
+    lines = console.render_lines(renderable, options, pad=False, new_lines=True)
     if len(lines) <= max_lines:
         return renderable
 
     ellipsis = Text("… (truncated)", style="italic dim", no_wrap=True)
-    segments: list[Segment] = []
-    for line in [*lines[: max_lines - 1], list(ellipsis.render(console))]:
-        segments.extend(line)
-        # every line needs its newline: Textual sizes a renderable by counting
-        # the newlines in it, and would otherwise clip the last line.
-        segments.append(Segment.line())
-    return Segments(segments)
+    return Segments(
+        [
+            *chain.from_iterable(lines[: max_lines - 1]),
+            *ellipsis.render(console),
+            Segment.line(),
+        ]
+    )
 
 
 def measure_width(obj: object, console: Console) -> int:
