@@ -11,7 +11,6 @@ from typing import Any, Generic, Literal, TypeVar
 import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.lib as pal
-import pyarrow.parquet as pq
 import pyarrow.types as pt
 from rich.console import Console
 
@@ -273,6 +272,10 @@ class ArrowBackend(DataTableBackend[pa.Table]):
     def from_parquet(
         cls, path: Path | str, max_rows: int | None = None
     ) -> "ArrowBackend":
+        # deferred: parquet is the only pyarrow submodule not used elsewhere in
+        # this module, and it is expensive to import.
+        import pyarrow.parquet as pq
+
         tbl = pq.read_table(str(path))
         return cls(tbl, max_rows=max_rows)
 
