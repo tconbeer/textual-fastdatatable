@@ -28,6 +28,18 @@ class TooltipApp(App):
         yield DataTable(data={"json": [self.value] * 40}, max_column_content_width=20)
 
 
+class RestyledTooltipApp(TooltipApp):
+    """An app that restyles the tooltip, the way harlequin does."""
+
+    CSS = """
+    Tooltip {
+        max-width: 72;
+        padding: 0 1;
+        margin: 2 0;
+    }
+    """
+
+
 class HoverResult(NamedTuple):
     """The state of a tooltip while its app was still running."""
 
@@ -89,6 +101,24 @@ async def test_long_value_tooltip_is_marked_truncated() -> None:
     # so without the last one the truncation marker would be clipped
     assert len(text.splitlines()) == text.count("\n")
     assert result.region.height >= len(text.splitlines())
+
+
+@pytest.mark.asyncio
+async def test_tooltip_is_measured_from_the_tooltip_widgets_own_styles() -> None:
+    """An app may restyle the tooltip; its size must not be assumed."""
+    app = RestyledTooltipApp(LONG_VALUE)
+    result = await _hover_middle_cell(app)
+    assert result.displayed
+    assert result.displayed_after_refresh
+    assert not result.region.contains_point(result.mouse_position)
+
+    assert isinstance(result.content, Segments)
+    text = "".join(segment.text for segment in result.content.segments)
+    lines = text.splitlines()
+    # the app's own max-width (72) and padding (0 1) are used, not Textual's
+    # default 40 with padding 1 2, which would wrap the content at 36 cells
+    assert result.region.width == 72
+    assert 36 < max(len(line) for line in lines) <= 70
 
 
 @pytest.mark.asyncio

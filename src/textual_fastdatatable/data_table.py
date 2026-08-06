@@ -44,6 +44,7 @@ from textual.binding import Binding, BindingType
 from textual.cache import LRUCache
 from textual.color import Color
 from textual.coordinate import Coordinate
+from textual.css.query import NoMatches
 from textual.dom import NoScreen
 from textual.geometry import Region, Size, Spacing, clamp
 from textual.message import Message
@@ -53,6 +54,7 @@ from textual.renderables.styled import Styled
 from textual.scroll_view import ScrollView
 from textual.strip import Strip
 from textual.widget import PseudoClasses
+from textual.widgets import Tooltip
 from typing_extensions import Self
 
 from textual_fastdatatable.backend import DataTableBackend, create_backend
@@ -67,14 +69,14 @@ CursorType = Literal["cell", "range", "row", "column", "none"]
 """The valid types of cursors for
 [`DataTable.cursor_type`][textual.widgets.DataTable.cursor_type]."""
 SegmentLines = list[list[Segment]]
-TooltipCacheKey = tuple[int, int, int, int]
+TooltipCacheKey = tuple[int, int, int, int, int]
 
-TOOLTIP_CONTENT_WIDTH = 36
-"""The width available to tooltip content: Textual's Tooltip is `max-width: 40`
-with `padding: 1 2`."""
-TOOLTIP_HEIGHT_OVERHEAD = 4
-"""Rows a tooltip occupies in addition to its content: `padding: 1 2` and
-`margin: 1 0`."""
+# Tooltips are styled by the app, so their size is read from the Tooltip widget
+# (see _tooltip_content_size); these are only fallbacks for when there is none,
+# and match Textual's own Tooltip CSS.
+DEFAULT_TOOLTIP_MAX_WIDTH = 40
+DEFAULT_TOOLTIP_GUTTER = Spacing(1, 2, 1, 2)
+DEFAULT_TOOLTIP_MARGIN = Spacing(1, 0, 1, 0)
 MIN_TOOLTIP_CONTENT_HEIGHT = 2
 """Never truncate tooltip content below this many lines (one line of content and
 the truncation marker), no matter how short the terminal is."""
@@ -2514,32 +2516,63 @@ class DataTable(ScrollView, can_focus=True):
 
         self._set_tooltip_from_cell_at(mouse_coordinate)
 
-    @property
-    def _max_tooltip_lines(self) -> int:
-        """The tallest a tooltip can be without covering the mouse.
+    def _tooltip_content_size(self) -> tuple[int, int]:
+        """The width and height available to tooltip content, in cells.
 
+        The height is the tallest a tooltip can be without covering the mouse.
         Textual positions the tooltip at the mouse and constrains it to the screen,
         inflecting it above the mouse if it does not fit below. A tooltip that fits
         on neither side is clamped to the screen, where it covers the mouse; Textual
         then clears it, the mouse moves onto the cell again, and the tooltip flickers
         forever (see tconbeer/harlequin#894). Half the screen always fits on one
         side of the mouse.
+
+        Both dimensions come from the Tooltip widget's own styles, since an app is
+        free to restyle it.
         """
+        tooltip: Tooltip | None = None
         try:
-            screen_height = self.screen.size.height
+            screen = self.screen
         except NoScreen:
-            screen_height = self.size.height
-        return max(
-            MIN_TOOLTIP_CONTENT_HEIGHT, screen_height // 2 - TOOLTIP_HEIGHT_OVERHEAD
-        )
+            screen_size = self.size
+        else:
+            screen_size = screen.size
+            try:
+                tooltip = screen.get_child_by_type(Tooltip)
+            except NoMatches:
+                pass  # tooltips are disabled; fall back to Textual's own styles
+
+        gutter = DEFAULT_TOOLTIP_GUTTER
+        margin = DEFAULT_TOOLTIP_MARGIN
+        max_width = DEFAULT_TOOLTIP_MAX_WIDTH
+        max_height: int | None = None
+        if tooltip is not None:
+            styles = tooltip.styles
+            gutter = tooltip.gutter  # padding and border
+            margin = styles.margin
+            max_width = (
+                int(styles.max_width.resolve(screen_size, screen_size))
+                if styles.max_width is not None
+                else screen_size.width
+            )
+            if styles.max_height is not None:
+                max_height = int(styles.max_height.resolve(screen_size, screen_size))
+
+        content_width = max(1, min(max_width, screen_size.width) - gutter.width)
+        content_height = screen_size.height // 2 - gutter.height - margin.height
+        if max_height is not None:
+            # respect a shorter tooltip, so the truncation marker isn't clipped
+            content_height = min(content_height, max_height - gutter.height)
+        return content_width, max(MIN_TOOLTIP_CONTENT_HEIGHT, content_height)
 
     def _set_tooltip_from_cell_at(self, coordinate: Coordinate) -> None:
         # TODO: support row labels
-        max_lines = self._max_tooltip_lines
+        max_width, max_lines = self._tooltip_content_size()
         cache_key = (
             coordinate.row,
             coordinate.column,
             self._update_count,
+            max_width,
             max_lines,
         )
         column = self.ordered_columns[coordinate.column]
@@ -2560,7 +2593,7 @@ class DataTable(ScrollView, can_focus=True):
                     # characters than the tooltip has cells; slicing first keeps
                     # us from formatting and rendering megabytes of JSON that
                     # would only be discarded below.
-                    raw_value = raw_value[: TOOLTIP_CONTENT_WIDTH * (max_lines + 1)]
+                    raw_value = raw_value[: max_width * (max_lines + 1)]
                 if isinstance(raw_value, Text):
                     renderable: RenderableType = raw_value
                 elif isinstance(
@@ -2578,7 +2611,7 @@ class DataTable(ScrollView, can_focus=True):
                 self._tooltip_cache[cache_key] = truncate_renderable(
                     renderable,
                     console=self.app.console,
-                    max_width=TOOLTIP_CONTENT_WIDTH,
+                    max_width=max_width,
                     max_lines=max_lines,
                 )
             else:
