@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
+from itertools import chain
 from typing import cast
 
 from rich.align import Align
@@ -9,6 +10,7 @@ from rich.console import Console, RenderableType
 from rich.errors import MarkupError
 from rich.markup import escape
 from rich.protocol import is_renderable
+from rich.segment import Segment, Segments
 from rich.text import Text
 
 from textual_fastdatatable.column import Column
@@ -104,6 +106,40 @@ def cell_formatter(
 
     else:
         return cast(RenderableType, obj)
+
+
+def truncate_renderable(
+    renderable: RenderableType, console: Console, max_width: int, max_lines: int
+) -> RenderableType:
+    """Clip a renderable so it fits in a box of max_width x max_lines.
+
+    Args:
+        renderable: A Rich renderable.
+        console: The console used to render the renderable.
+        max_width: The width (in cells) the renderable will be rendered at.
+        max_lines: The maximum number of lines the returned renderable may occupy.
+
+    Returns:
+        The original renderable, if it already fits; otherwise a renderable of
+        exactly max_lines lines, the last of which marks the content as truncated.
+    """
+    if max_lines < 2 or max_width < 1:
+        return renderable
+    options = console.options.update(width=max_width, height=None, overflow="fold")
+    # new_lines=True terminates every line, including the last: Textual sizes a
+    # renderable by counting its newlines, and would otherwise clip the marker.
+    lines = console.render_lines(renderable, options, pad=False, new_lines=True)
+    if len(lines) <= max_lines:
+        return renderable
+
+    ellipsis = Text("… (truncated)", style="italic dim", no_wrap=True)
+    return Segments(
+        [
+            *chain.from_iterable(lines[: max_lines - 1]),
+            *ellipsis.render(console),
+            Segment.line(),
+        ]
+    )
 
 
 def measure_width(obj: object, console: Console) -> int:

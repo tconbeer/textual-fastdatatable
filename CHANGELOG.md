@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+- Fixes the flickering tooltip reported in
+  [tconbeer/harlequin#894](https://github.com/tconbeer/harlequin/issues/894). Tooltip
+  content is now truncated (with a `… (truncated)` marker) to at most half the height of
+  the screen, so the tooltip can no longer be clamped over the mouse, which caused
+  Textual to clear and re-show it indefinitely.
+
 ## [0.16.0] - 2026-08-05
 
 ### Features
