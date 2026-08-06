@@ -44,6 +44,7 @@ from textual.binding import Binding, BindingType
 from textual.cache import LRUCache
 from textual.color import Color
 from textual.coordinate import Coordinate
+from textual.dom import NoScreen
 from textual.geometry import Region, Size, Spacing, clamp
 from textual.message import Message
 from textual.reactive import Reactive
@@ -56,13 +57,27 @@ from typing_extensions import Self
 
 from textual_fastdatatable.backend import DataTableBackend, create_backend
 from textual_fastdatatable.column import Column
-from textual_fastdatatable.format import cell_formatter, measure_width
+from textual_fastdatatable.format import (
+    cell_formatter,
+    measure_width,
+    truncate_renderable,
+)
 
 CursorType = Literal["cell", "range", "row", "column", "none"]
 """The valid types of cursors for
 [`DataTable.cursor_type`][textual.widgets.DataTable.cursor_type]."""
 SegmentLines = list[list[Segment]]
-TooltipCacheKey = tuple[int, int, int]
+TooltipCacheKey = tuple[int, int, int, int]
+
+TOOLTIP_CONTENT_WIDTH = 36
+"""The width available to tooltip content: Textual's Tooltip is `max-width: 40`
+with `padding: 1 2`."""
+TOOLTIP_HEIGHT_OVERHEAD = 4
+"""Rows a tooltip occupies in addition to its content: `padding: 1 2` and
+`margin: 1 0`."""
+MIN_TOOLTIP_CONTENT_HEIGHT = 2
+"""Never truncate tooltip content below this many lines (one line of content and
+the truncation marker), no matter how short the terminal is."""
 CellCacheKey = tuple[int, int, Style, bool, bool, bool, bool, int, PseudoClasses]
 LineCacheKey = tuple[
     int,
@@ -2499,9 +2514,34 @@ class DataTable(ScrollView, can_focus=True):
 
         self._set_tooltip_from_cell_at(mouse_coordinate)
 
+    @property
+    def _max_tooltip_lines(self) -> int:
+        """The tallest a tooltip can be without covering the mouse.
+
+        Textual positions the tooltip at the mouse and constrains it to the screen,
+        inflecting it above the mouse if it does not fit below. A tooltip that fits
+        on neither side is clamped to the screen, where it covers the mouse; Textual
+        then clears it, the mouse moves onto the cell again, and the tooltip flickers
+        forever (see tconbeer/harlequin#894). Half the screen always fits on one
+        side of the mouse.
+        """
+        try:
+            screen_height = self.screen.size.height
+        except NoScreen:
+            screen_height = self.size.height
+        return max(
+            MIN_TOOLTIP_CONTENT_HEIGHT, screen_height // 2 - TOOLTIP_HEIGHT_OVERHEAD
+        )
+
     def _set_tooltip_from_cell_at(self, coordinate: Coordinate) -> None:
         # TODO: support row labels
-        cache_key = (coordinate.row, coordinate.column, self._update_count)
+        max_lines = self._max_tooltip_lines
+        cache_key = (
+            coordinate.row,
+            coordinate.column,
+            self._update_count,
+            max_lines,
+        )
         column = self.ordered_columns[coordinate.column]
         if cache_key not in self._tooltip_cache:
             if coordinate.row == -1:  # hover over header
@@ -2515,20 +2555,32 @@ class DataTable(ScrollView, can_focus=True):
                 self.max_column_content_width is not None
                 and measured_width > self.max_column_content_width
             ) or (measured_width > column.render_width):
+                if isinstance(raw_value, str):
+                    # a value that fits in the tooltip can never contain more
+                    # characters than the tooltip has cells; slicing first keeps
+                    # us from formatting and rendering megabytes of JSON that
+                    # would only be discarded below.
+                    raw_value = raw_value[: TOOLTIP_CONTENT_WIDTH * (max_lines + 1)]
                 if isinstance(raw_value, Text):
-                    self._tooltip_cache[cache_key] = raw_value
+                    renderable: RenderableType = raw_value
                 elif isinstance(
                     raw_value,
                     (str, float, Decimal, int, datetime, time, date, timedelta),
                 ):
-                    self._tooltip_cache[cache_key] = cell_formatter(
+                    renderable = cell_formatter(
                         raw_value,
                         null_rep=self.null_rep,
                         col=column,
                         render_markup=self.render_markup,
                     )
                 else:
-                    self._tooltip_cache[cache_key] = Pretty(raw_value)
+                    renderable = Pretty(raw_value)
+                self._tooltip_cache[cache_key] = truncate_renderable(
+                    renderable,
+                    console=self.app.console,
+                    max_width=TOOLTIP_CONTENT_WIDTH,
+                    max_lines=max_lines,
+                )
             else:
                 self._tooltip_cache[cache_key] = None
         self.tooltip = self._tooltip_cache[cache_key]
