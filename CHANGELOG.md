@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+- `textual_fastdatatable.backend` can now be imported without importing Textual: the
+  `DataTable` widget is now imported lazily by the package root (PEP 562), so
+  `from textual_fastdatatable.backend import create_backend` no longer drags in the widget
+  framework. `from textual_fastdatatable import DataTable` is unchanged, and still imports
+  Textual at the moment the name is accessed.
+- `pyarrow.parquet` is now imported lazily, inside `ArrowBackend.from_parquet()`, instead
+  of at module scope in `backend.py`.
+- Together these cut `from textual_fastdatatable.backend import create_backend` from 359
+  to 186 imported modules on Python 3.10 (measured against this project's required
+  dependencies, without the `polars` extra). There are no API changes.
+
 ## [0.16.0] - 2026-08-05
 
 ### Features
