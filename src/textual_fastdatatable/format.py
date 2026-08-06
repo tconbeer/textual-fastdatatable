@@ -9,6 +9,7 @@ from rich.console import Console, RenderableType
 from rich.errors import MarkupError
 from rich.markup import escape
 from rich.protocol import is_renderable
+from rich.segment import Segment, Segments
 from rich.text import Text
 
 from textual_fastdatatable.column import Column
@@ -104,6 +105,38 @@ def cell_formatter(
 
     else:
         return cast(RenderableType, obj)
+
+
+def truncate_renderable(
+    renderable: RenderableType, console: Console, max_width: int, max_lines: int
+) -> RenderableType:
+    """Clip a renderable so it fits in a box of max_width x max_lines.
+
+    Args:
+        renderable: A Rich renderable.
+        console: The console used to render the renderable.
+        max_width: The width (in cells) the renderable will be rendered at.
+        max_lines: The maximum number of lines the returned renderable may occupy.
+
+    Returns:
+        The original renderable, if it already fits; otherwise a renderable of
+        exactly max_lines lines, the last of which marks the content as truncated.
+    """
+    if max_lines < 2 or max_width < 1:
+        return renderable
+    options = console.options.update(width=max_width, height=None, overflow="fold")
+    lines = console.render_lines(renderable, options, pad=False, new_lines=False)
+    if len(lines) <= max_lines:
+        return renderable
+
+    ellipsis = Text("… (truncated)", style="italic dim", no_wrap=True)
+    segments: list[Segment] = []
+    for line in [*lines[: max_lines - 1], list(ellipsis.render(console))]:
+        segments.extend(line)
+        # every line needs its newline: Textual sizes a renderable by counting
+        # the newlines in it, and would otherwise clip the last line.
+        segments.append(Segment.line())
+    return Segments(segments)
 
 
 def measure_width(obj: object, console: Console) -> int:
