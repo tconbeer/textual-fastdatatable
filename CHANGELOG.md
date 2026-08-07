@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.16.1] - 2026-08-07
+
 - `textual_fastdatatable.backend` can now be imported without importing Textual: the
   `DataTable` widget is now imported lazily by the package root (PEP 562), so
   `from textual_fastdatatable.backend import create_backend` no longer drags in the widget
@@ -200,7 +202,8 @@ All notable changes to this project will be documented in this file.
 
 - Initial release. Adds DataTable and ArrowBackend, which is 1000x faster for datasets of 500k records or more.
 
-[unreleased]: https://github.com/tconbeer/textual-fastdatatable/compare/0.16.0...HEAD
+[unreleased]: https://github.com/tconbeer/textual-fastdatatable/compare/0.16.1...HEAD
+[0.16.1]: https://github.com/tconbeer/textual-fastdatatable/compare/0.16.0...0.16.1
 [0.16.0]: https://github.com/tconbeer/textual-fastdatatable/compare/0.15.0...0.16.0
 [0.15.0]: https://github.com/tconbeer/textual-fastdatatable/compare/0.14.0...0.15.0
 [0.14.0]: https://github.com/tconbeer/textual-fastdatatable/compare/0.13.0...0.14.0

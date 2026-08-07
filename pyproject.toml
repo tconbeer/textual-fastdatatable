@@ -1,7 +1,7 @@
 [project]
 
 name = "textual-fastdatatable"
-version = "0.16.0"
+version = "0.16.1"
 requires-python = ">=3.10"
 description = "A performance-focused reimplementation of Textual's DataTable widget, with a pluggable data storage backend."
 authors = [
