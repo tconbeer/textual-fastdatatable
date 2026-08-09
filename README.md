@@ -100,6 +100,32 @@ backend = ArrowBackend.from_records(
 backend = ArrowBackend.from_parquet("path/to/file.parquet")
 ```
 
+### Supplying column names
+
+If you have names for the columns that the data itself doesn't carry — a database cursor's
+description, say — pass them to `create_backend` as `column_names`:
+
+```py
+from textual_fastdatatable import create_backend
+backend = create_backend([(1, "a"), (2, "b")], column_names=["id", "letter"])
+backend.columns  # ["id", "letter"], instead of ["f0", "f1"]
+```
+
+They also let a query that returned no rows keep its header, which is otherwise impossible
+to express:
+
+```py
+create_backend(None)                              # raises TypeError
+create_backend(None, column_names=["id", "letter"]).columns  # ["id", "letter"]
+create_backend([], column_names=["id", "letter"]).columns    # ["id", "letter"]
+```
+
+For data that already has columns (an Arrow table, a DataFrame, a Parquet or CSV file, a
+dict), the names are applied when there is one for each column; a mismatched count leaves
+the data's own names alone. Duplicate names are allowed — `select 1 as a, 2 as a` is legal
+SQL — and reach `ArrowBackend.source_data` verbatim, though `ArrowBackend.data` (what the
+widget displays) de-duplicates them to `a`, `a0`.
+
 ## Limitations and Caveats
 
 The `DataTable` does not currently support rows with a height of more than one line. Only the first line of each row will be displayed.

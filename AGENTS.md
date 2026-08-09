@@ -54,6 +54,13 @@ rows and columns are addressed positionally, which is why sorting invalidates ca
 and picks a backend. Note `_is_pandas_dataframe` deliberately checks `sys.modules` instead
 of importing pandas — pandas is not a dependency of this package.
 
+Its optional `column_names` argument carries labels the caller has but the data doesn't
+(a cursor description, say). It is threaded down to each backend's `__init__` and applied
+*before* the duplicate-name de-duplication, so `ArrowBackend.source_data` keeps duplicates
+verbatim while `.data` gets `a`, `a0`. `_relabel` holds the rules: no columns at all means
+build an empty table from the names; one name per column means rename; any other count
+means the data's own names win.
+
 The contract a backend must satisfy is narrow and index-based: `row_count`,
 `column_count`, `columns`, `column_content_widths`, `get_row_at`/`get_column_at`/
 `get_cell_at`, and the mutation methods (`append_rows`, `append_column`, `drop_row`,

@@ -6,6 +6,10 @@ from pathlib import Path
 
 import pyarrow as pa
 
+# pyarrow.parquet is imported lazily by ArrowBackend.from_parquet, so `pa.parquet`
+# is not bound until something imports it.
+import pyarrow.parquet  # noqa: F401
+
 from textual_fastdatatable import ArrowBackend
 
 
