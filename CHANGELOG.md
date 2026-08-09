@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-08-09
+
 - `create_backend()` (and the backend constructors it dispatches to) now accept a
   `column_names` argument: the labels the caller has for the data's columns, which are
   applied in place of the ones the data carries or lacks. `create_backend(None,
@@ -209,7 +211,8 @@ All notable changes to this project will be documented in this file.
 
 - Initial release. Adds DataTable and ArrowBackend, which is 1000x faster for datasets of 500k records or more.
 
-[unreleased]: https://github.com/tconbeer/textual-fastdatatable/compare/0.16.1...HEAD
+[unreleased]: https://github.com/tconbeer/textual-fastdatatable/compare/0.17.0...HEAD
+[0.17.0]: https://github.com/tconbeer/textual-fastdatatable/compare/0.16.1...0.17.0
 [0.16.1]: https://github.com/tconbeer/textual-fastdatatable/compare/0.16.0...0.16.1
 [0.16.0]: https://github.com/tconbeer/textual-fastdatatable/compare/0.15.0...0.16.0
 [0.15.0]: https://github.com/tconbeer/textual-fastdatatable/compare/0.14.0...0.15.0
