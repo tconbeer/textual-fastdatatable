@@ -5,10 +5,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pyarrow as pa
-
-# pyarrow.parquet is imported lazily by ArrowBackend.from_parquet, so `pa.parquet`
-# is not bound until something imports it.
-import pyarrow.parquet  # noqa: F401
+import pyarrow.parquet as pq
 
 from textual_fastdatatable import ArrowBackend
 
@@ -46,7 +43,7 @@ def test_from_pydict_with_limit(pydict: dict[str, Sequence[str | int]]) -> None:
 def test_from_parquet(pydict: dict[str, Sequence[str | int]], tmp_path: Path) -> None:
     tbl = pa.Table.from_pydict(pydict)
     p = tmp_path / "test.parquet"
-    pa.parquet.write_table(tbl, str(p))
+    pq.write_table(tbl, str(p))
 
     backend = ArrowBackend.from_parquet(p)
     assert backend.data.equals(tbl)

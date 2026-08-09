@@ -5,6 +5,7 @@ from pathlib import Path
 
 import polars as pl
 import pyarrow as pa
+import pyarrow.parquet as pq
 import pytest
 
 from textual_fastdatatable.backend import ArrowBackend, PolarsBackend, create_backend
@@ -162,8 +163,6 @@ def test_csv_with_column_names(tmp_path: Path) -> None:
 
 
 def test_parquet_with_column_names(tmp_path: Path) -> None:
-    import pyarrow.parquet as pq
-
     path = tmp_path / "data.parquet"
     pq.write_table(pa.table({"a": [1, 2], "b": [3, 4]}), str(path))
     backend = create_backend(data=path, column_names=["one", "two"])

@@ -6,21 +6,10 @@ All notable changes to this project will be documented in this file.
 
 - `create_backend()` (and the backend constructors it dispatches to) now accept a
   `column_names` argument: the labels the caller has for the data's columns, which are
-  applied in place of the ones the data carries or lacks
+  applied in place of the ones the data carries or lacks. `create_backend(None,
+  column_names=[...])` now builds an empty table with those columns instead of raising,
+  and records use those names in place of `f0`, `f1`, ...
   ([#165](https://github.com/tconbeer/textual-fastdatatable/issues/165)).
-  - `create_backend(None, column_names=[...])` builds an empty table with those columns
-    instead of raising `TypeError`; so does an empty sequence, or any table with no
-    columns at all.
-  - Record-shaped data uses those names in place of `f0`, `f1`, .... If `has_header=True`
-    is also passed, the first record is still consumed as a header, but `column_names`
-    wins over it.
-  - Tabular data (Arrow, polars, pandas, parquet, CSV, a pydict) is renamed when there is
-    one name per column; a mismatched count leaves the data's own names in place.
-  - Duplicate names (`select 1 as a, 2 as a`) reach `ArrowBackend.source_data` verbatim.
-    `ArrowBackend.data` still de-duplicates them to `a`, `a0` for display.
-  - Omitting `column_names` leaves every existing behavior unchanged.
-- Fixes `tests/unit_tests/test_arrow_backend.py::test_from_parquet`, which broke in 0.16.1
-  when `pyarrow.parquet` became a lazy import.
 
 ## [0.16.1] - 2026-08-07
 
