@@ -7,7 +7,7 @@ All notable changes to this project will be documented in this file.
 - `create_backend()` (and the backend constructors it dispatches to) now accept a
   `column_names` argument: the labels the caller has for the data's columns, which are
   applied in place of the ones the data carries or lacks
-  ([tconbeer/harlequin#524](https://github.com/tconbeer/harlequin/issues/524)).
+  ([#165](https://github.com/tconbeer/textual-fastdatatable/issues/165)).
   - `create_backend(None, column_names=[...])` builds an empty table with those columns
     instead of raising `TypeError`; so does an empty sequence, or any table with no
     columns at all.
