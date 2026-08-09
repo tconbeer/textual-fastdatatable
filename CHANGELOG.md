@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+- `create_backend()` (and the backend constructors it dispatches to) now accept a
+  `column_names` argument: the labels the caller has for the data's columns, which are
+  applied in place of the ones the data carries or lacks. `create_backend(None,
+  column_names=[...])` now builds an empty table with those columns instead of raising,
+  and records use those names in place of `f0`, `f1`, ...
+  ([#165](https://github.com/tconbeer/textual-fastdatatable/issues/165)).
+
 ## [0.16.1] - 2026-08-07
 
 - `textual_fastdatatable.backend` can now be imported without importing Textual: the

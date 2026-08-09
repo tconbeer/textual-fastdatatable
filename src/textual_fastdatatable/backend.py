@@ -31,35 +31,78 @@ def create_backend(
     data: "AutoBackendType",
     max_rows: int | None = None,
     has_header: bool = False,
+    column_names: Sequence[str] | None = None,
 ) -> DataTableBackend:
+    """Create a backend for `data`, picking the implementation from its type.
+
+    column_names: the labels the caller has for the data's columns, which are
+        applied to the backend in place of the ones the data carries (or lacks).
+        When passed:
+
+        - `data=None` builds an empty table with those columns, instead of
+          raising: a cursor that returned no rows still described its columns.
+        - `data` an empty sequence (or any table with no columns at all) builds
+          an empty table with those columns.
+        - record-shaped `data` uses them in place of `f0`, `f1`, .... If
+          `has_header` is also set, the first record is still consumed as a
+          header, but these names win over it.
+        - tabular `data` is renamed to them when there is one name per column.
+          A mismatched count means the data and the names disagree, and the data
+          wins.
+
+        Duplicate names are legal (`select 1 as a, 2 as a`) and reach
+        `ArrowBackend.source_data` verbatim. `ArrowBackend.data` de-duplicates
+        them (to `a`, `a0`), because a table's `to_pylist()`/`to_pydict()` drop
+        duplicate-named fields; `PolarsBackend` de-duplicates them everywhere,
+        as polars does not allow duplicate column names at all.
+
+        When `column_names` is not passed, every case behaves as it always has.
+    """
+    if data is None and column_names is not None:
+        return ArrowBackend(_empty_table(column_names), max_rows=max_rows)
     if isinstance(data, pa.Table):
-        return ArrowBackend(data, max_rows=max_rows)
+        return ArrowBackend(data, max_rows=max_rows, column_names=column_names)
     if isinstance(data, pa.RecordBatch):
-        return ArrowBackend.from_batches(data, max_rows=max_rows)
+        return ArrowBackend.from_batches(
+            data, max_rows=max_rows, column_names=column_names
+        )
     if _HAS_POLARS and isinstance(data, pl.DataFrame):
-        return PolarsBackend.from_dataframe(data, max_rows=max_rows)
+        return PolarsBackend.from_dataframe(
+            data, max_rows=max_rows, column_names=column_names
+        )
     if _is_pandas_dataframe(data):
-        return ArrowBackend.from_pandas(data, max_rows=max_rows)
+        return ArrowBackend.from_pandas(
+            data, max_rows=max_rows, column_names=column_names
+        )
 
     if isinstance(data, Path) or isinstance(data, str):
         data = Path(data)
         if data.suffix in [".pqt", ".parquet"]:
-            return ArrowBackend.from_parquet(data, max_rows=max_rows)
+            return ArrowBackend.from_parquet(
+                data, max_rows=max_rows, column_names=column_names
+            )
         if _HAS_POLARS:
             return PolarsBackend.from_file_path(
-                data, max_rows=max_rows, has_header=has_header
+                data,
+                max_rows=max_rows,
+                has_header=has_header,
+                column_names=column_names,
             )
     if isinstance(data, Sequence) and not data:
-        return ArrowBackend(pa.table([]), max_rows=max_rows)
+        return ArrowBackend(pa.table([]), max_rows=max_rows, column_names=column_names)
     if isinstance(data, Sequence) and _is_iterable(data[0]):
-        return ArrowBackend.from_records(data, max_rows=max_rows, has_header=has_header)
+        return ArrowBackend.from_records(
+            data, max_rows=max_rows, has_header=has_header, column_names=column_names
+        )
 
     if (
         isinstance(data, Mapping)
         and isinstance(next(iter(data.keys())), str)
         and isinstance(next(iter(data.values())), Sequence)
     ):
-        return ArrowBackend.from_pydict(data, max_rows=max_rows)
+        return ArrowBackend.from_pydict(
+            data, max_rows=max_rows, column_names=column_names
+        )
 
     raise TypeError(
         f"Cannot automatically create backend for data of type: {type(data)}. "
@@ -67,6 +110,44 @@ def create_backend(
         "Sequence[Iterable[Any]], Mapping[str, Sequence[Any]], pl.DataFrame, "
         "pd.DataFrame",
     )
+
+
+def _empty_table(column_names: Sequence[str]) -> pa.Table:
+    """A table with the passed columns and no rows."""
+    return pa.Table.from_arrays(
+        [pa.array([], type=pa.string()) for _ in column_names],
+        names=list(column_names),
+    )
+
+
+def _relabel(data: pa.Table, column_names: Sequence[str]) -> pa.Table:
+    """Apply the caller's column names to an Arrow table.
+
+    A table with no columns described nothing, so it is replaced by an empty
+    table with the caller's columns. Otherwise the names are applied only if
+    there is one for each column: a mismatched count means the data and the
+    names disagree, and the data's own names win.
+    """
+    names = list(column_names)
+    if data.num_columns == 0:
+        return _empty_table(names)
+    if data.num_columns != len(names):
+        return data
+    return data.rename_columns(names)
+
+
+def _deduplicate(column_names: Sequence[str]) -> tuple[list[str], bool]:
+    """Make each name unique by suffixing repeats; also report if any changed."""
+    field_names: list[str] = []
+    renamed = False
+    for field in column_names:
+        n = 0
+        while field in field_names:
+            field = f"{field}{n}"
+            renamed = True
+            n += 1
+        field_names.append(field)
+    return field_names, renamed
 
 
 def _is_pandas_dataframe(data: Any) -> bool:
@@ -95,13 +176,21 @@ class DataTableBackend(ABC, Generic[_TableTypeT]):
     data: _TableTypeT
 
     @abstractmethod
-    def __init__(self, data: _TableTypeT, max_rows: int | None = None) -> None:
+    def __init__(
+        self,
+        data: _TableTypeT,
+        max_rows: int | None = None,
+        column_names: Sequence[str] | None = None,
+    ) -> None:
         pass
 
     @classmethod
     @abstractmethod
     def from_pydict(
-        cls, data: Mapping[str, Sequence[Any]], max_rows: int | None = None
+        cls,
+        data: Mapping[str, Sequence[Any]],
+        max_rows: int | None = None,
+        column_names: Sequence[str] | None = None,
     ) -> "DataTableBackend":
         pass
 
@@ -197,20 +286,21 @@ class DataTableBackend(ABC, Generic[_TableTypeT]):
 
 
 class ArrowBackend(DataTableBackend[pa.Table]):
-    def __init__(self, data: pa.Table, max_rows: int | None = None) -> None:
+    def __init__(
+        self,
+        data: pa.Table,
+        max_rows: int | None = None,
+        column_names: Sequence[str] | None = None,
+    ) -> None:
+        # the caller's names are applied first, so that source_data carries them
+        # verbatim, duplicates and all.
+        if column_names is not None:
+            data = _relabel(data, column_names)
         self._source_data = data
 
         # Arrow allows duplicate field names, but a table's to_pylist() and
         # to_pydict() methods will drop duplicate-named fields!
-        field_names: list[str] = []
-        renamed = False
-        for field in data.column_names:
-            n = 0
-            while field in field_names:
-                field = f"{field}{n}"
-                renamed = True
-                n += 1
-            field_names.append(field)
+        field_names, renamed = _deduplicate(data.column_names)
         if renamed:
             data = data.rename_columns(field_names)
 
@@ -263,35 +353,49 @@ class ArrowBackend(DataTableBackend[pa.Table]):
 
     @classmethod
     def from_batches(
-        cls, data: pa.RecordBatch, max_rows: int | None = None
+        cls,
+        data: pa.RecordBatch,
+        max_rows: int | None = None,
+        column_names: Sequence[str] | None = None,
     ) -> "ArrowBackend":
         tbl = pa.Table.from_batches([data])
-        return cls(tbl, max_rows=max_rows)
+        return cls(tbl, max_rows=max_rows, column_names=column_names)
 
     @classmethod
     def from_parquet(
-        cls, path: Path | str, max_rows: int | None = None
+        cls,
+        path: Path | str,
+        max_rows: int | None = None,
+        column_names: Sequence[str] | None = None,
     ) -> "ArrowBackend":
         # deferred: parquet is the only pyarrow submodule not used elsewhere in
         # this module, and it is expensive to import.
         import pyarrow.parquet as pq
 
         tbl = pq.read_table(str(path))
-        return cls(tbl, max_rows=max_rows)
+        return cls(tbl, max_rows=max_rows, column_names=column_names)
 
     @classmethod
-    def from_pandas(cls, frame: Any, max_rows: int | None = None) -> "ArrowBackend":
+    def from_pandas(
+        cls,
+        frame: Any,
+        max_rows: int | None = None,
+        column_names: Sequence[str] | None = None,
+    ) -> "ArrowBackend":
         """Create a backend from a pandas DataFrame.
 
         The frame's index is not displayed; call `df.reset_index()` first to
         show it as a column.
         """
         tbl = pa.Table.from_pandas(frame, preserve_index=False)
-        return cls(tbl, max_rows=max_rows)
+        return cls(tbl, max_rows=max_rows, column_names=column_names)
 
     @classmethod
     def from_pydict(
-        cls, data: Mapping[str, Sequence[Any]], max_rows: int | None = None
+        cls,
+        data: Mapping[str, Sequence[Any]],
+        max_rows: int | None = None,
+        column_names: Sequence[str] | None = None,
     ) -> "ArrowBackend":
         try:
             tbl = pa.Table.from_pydict(dict(data))
@@ -303,7 +407,7 @@ class ArrowBackend(DataTableBackend[pa.Table]):
                 for k, v in data.items()
             }
             tbl = pa.Table.from_pydict(new_data)
-        return cls(tbl, max_rows=max_rows)
+        return cls(tbl, max_rows=max_rows, column_names=column_names)
 
     @classmethod
     def from_records(
@@ -311,9 +415,12 @@ class ArrowBackend(DataTableBackend[pa.Table]):
         records: Sequence[Iterable[Any]],
         has_header: bool = False,
         max_rows: int | None = None,
+        column_names: Sequence[str] | None = None,
     ) -> "ArrowBackend":
+        # column_names are applied by __init__, after the table is built: a
+        # pydict keyed by them would drop any duplicates among them.
         pydict = cls._pydict_from_records(records, has_header)
-        return cls.from_pydict(pydict, max_rows=max_rows)
+        return cls.from_pydict(pydict, max_rows=max_rows, column_names=column_names)
 
     @property
     def source_data(self) -> pa.Table:
@@ -511,7 +618,11 @@ if _HAS_POLARS:
     class PolarsBackend(DataTableBackend[pl.DataFrame]):
         @classmethod
         def from_file_path(
-            cls, path: Path, max_rows: int | None = None, has_header: bool = True
+            cls,
+            path: Path,
+            max_rows: int | None = None,
+            has_header: bool = True,
+            column_names: Sequence[str] | None = None,
         ) -> "PolarsBackend":
             if path.suffix in [".arrow", ".feather"]:
                 tbl = pl.read_ipc(path)
@@ -525,32 +636,47 @@ if _HAS_POLARS:
                 raise TypeError(
                     f"Dont know how to load file type {path.suffix} for {path}"
                 )
-            return cls(tbl, max_rows=max_rows)
+            return cls(tbl, max_rows=max_rows, column_names=column_names)
 
         @classmethod
         def from_pydict(
-            cls, pydict: Mapping[str, Sequence[Any]], max_rows: int | None = None
+            cls,
+            pydict: Mapping[str, Sequence[Any]],
+            max_rows: int | None = None,
+            column_names: Sequence[str] | None = None,
         ) -> "PolarsBackend":
-            return cls(pl.from_dict(pydict), max_rows=max_rows)
+            return cls(
+                pl.from_dict(pydict), max_rows=max_rows, column_names=column_names
+            )
 
         @classmethod
         def from_dataframe(
-            cls, frame: pl.DataFrame, max_rows: int | None = None
+            cls,
+            frame: pl.DataFrame,
+            max_rows: int | None = None,
+            column_names: Sequence[str] | None = None,
         ) -> "PolarsBackend":
-            return cls(frame, max_rows=max_rows)
+            return cls(frame, max_rows=max_rows, column_names=column_names)
 
-        def __init__(self, data: pl.DataFrame, max_rows: int | None = None) -> None:
+        def __init__(
+            self,
+            data: pl.DataFrame,
+            max_rows: int | None = None,
+            column_names: Sequence[str] | None = None,
+        ) -> None:
             self._source_data = data
 
+            names = list(data.columns)
+            # a mismatched count means the data and the caller's names disagree;
+            # the data wins.
+            if column_names is not None and len(column_names) == len(names):
+                names = list(column_names)
+
             # Arrow allows duplicate field names, but a table's to_pylist() and
-            # to_pydict() methods will drop duplicate-named fields!
-            field_names: list[str] = []
-            for field in data.columns:
-                n = 0
-                while field in field_names:
-                    field = f"{field}{n}"
-                    n += 1
-                field_names.append(field)
+            # to_pydict() methods will drop duplicate-named fields! polars does
+            # not allow them at all, so this de-duplication also reaches
+            # source_data, which is the same frame.
+            field_names, _ = _deduplicate(names)
             data.columns = field_names
 
             self._source_row_count = len(data)
