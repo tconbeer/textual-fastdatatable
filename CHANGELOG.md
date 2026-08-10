@@ -4,13 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
-- `textual_fastdatatable.backend` can now be imported without importing `rich`: the
-  `Console` used to measure column widths is now built on first measurement, and `rich`
-  and `textual_fastdatatable.format` are imported at that point instead of at module
-  scope. `create_backend()` no longer constructs a `Console` at all, so consumers that
-  never render (harlequin's headless `hsql` CLI) skip ~50 modules and ~30ms
+- `textual_fastdatatable.backend` can now be imported without importing `rich`, which is
+  now imported (with the `Console` it provides) on the first column-width measurement, so
+  consumers that never render skip ~50 modules and ~30ms
   ([#168](https://github.com/tconbeer/textual-fastdatatable/issues/168)).
-- The lazy imports in `backend.py` and `__init__.py` are now covered by tests.
 
 ## [0.17.0] - 2026-08-09
 
