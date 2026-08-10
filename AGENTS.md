@@ -76,7 +76,9 @@ reporting the full input — the widget shows both counts.
 `column_content_widths` is the hot path for first paint. Each backend computes it with
 vectorized column operations rather than per-cell Python (`_measure`): booleans and nulls
 are constants, numerics measure only min/max, temporals measure one non-null value, and
-everything else casts the whole column to string and takes `max(utf8_length)`. The result
+everything else casts the whole column to string and takes `max(utf8_length)`. The
+per-value fallback is `backend._measure_width`, which owns the lazily built rich `Console`
+(see Conventions). The result
 is cached on the backend and cleared by `_reset_content_widths()` on mutation. The Arrow
 path registers a PyArrow scalar UDF as a fallback for types Arrow can't cast to string.
 
@@ -116,22 +118,26 @@ message on `ctrl+c`/`super+c` — this requires the host app to be built with
   over `ArrowBackend` and `PolarsBackend` — behavior changes should hold for both.
 - Snapshot tests (`tests/snapshot_tests/`) each mount a tiny app from `snapshot_apps/` and
   compare rendered SVGs. Review diffs before running `--snapshot-update`.
-- `backend.py`, `format.py`, and `column.py` must stay free of Textual imports, so that
-  downstream consumers (harlequin's headless `hsql` CLI) can use `create_backend()`
-  without paying for the framework. Two deliberate deferrals keep this true, and **neither
-  is covered by a test** — adding a convenience import to the top of `__init__.py` silently
-  undoes the first, and any module-scope `pq.` use undoes the second:
+- `backend.py` must stay importable without Textual or rich, so that downstream consumers
+  (harlequin's headless `hsql` CLI) can use `create_backend()` as a normalizer without
+  paying for display. `format.py` and `column.py` may use rich, but must stay free of
+  Textual. Three deliberate deferrals keep this true:
   - `__init__.py` imports `DataTable` lazily via a module-level `__getattr__` (PEP 562),
-    with a `TYPE_CHECKING` import so mypy still resolves it for downstream users.
+    with a `TYPE_CHECKING` import so mypy still resolves it for downstream users. A
+    convenience import at the top of `__init__.py` silently undoes this.
   - `pyarrow.parquet` is imported inside `ArrowBackend.from_parquet`, its only use site.
     `pyarrow.compute`/`types`/`lib` stay at module scope; they're used in the hot path.
+    Any module-scope `pq.` use undoes this.
+  - `backend._measure_width` imports rich and `format.measure_width` on first call, and
+    builds its module-level `Console` there. Backends must not import either at module
+    scope, or construct a `Console` in `__init__`.
 
-  Check by hand after touching either file — both print `False`, and the import costs 186
-  modules on 3.10 against the required deps (523 with the `polars` extra, which `uv sync`
-  installs):
+  `tests/unit_tests/test_lazy_imports.py` asserts all three, in a subprocess. To check by
+  hand (all `False`; the import costs ~225 modules on 3.10 against the required deps, 450
+  with the `polars` extra, which `uv sync` installs):
 
   ```bash
-  uv run python -c "import sys; from textual_fastdatatable.backend import create_backend; print('textual' in sys.modules, 'pyarrow.parquet' in sys.modules, len(sys.modules))"
+  uv run python -c "import sys; from textual_fastdatatable.backend import create_backend; print('textual' in sys.modules, 'rich' in sys.modules, 'pyarrow.parquet' in sys.modules, len(sys.modules))"
   ```
 - `tests/unit_tests/test_wheels.py` resolves the dependency floors in `pyproject.toml` for
   every supported Python/platform with wheels only. It shells out to `uv` and hits PyPI, so

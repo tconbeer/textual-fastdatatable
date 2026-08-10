@@ -6,15 +6,15 @@ from collections.abc import Iterable, Mapping, Sequence
 from contextlib import suppress
 from datetime import date, datetime
 from pathlib import Path
-from typing import Any, Generic, Literal, TypeVar
+from typing import TYPE_CHECKING, Any, Generic, Literal, TypeVar
 
 import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.lib as pal
 import pyarrow.types as pt
-from rich.console import Console
 
-from textual_fastdatatable.format import measure_width
+if TYPE_CHECKING:
+    from rich.console import Console
 
 AutoBackendType = Any
 
@@ -25,6 +25,25 @@ except ImportError:
     _HAS_POLARS = False
 else:
     _HAS_POLARS = True
+
+_console: "Console | None" = None
+
+
+def _measure_width(value: Any) -> int:
+    """The rendered width of one value, for column_content_widths.
+
+    rich is imported (and the Console built) on first call, so that importing
+    this module costs nothing for consumers that never measure anything.
+    """
+    global _console
+
+    from textual_fastdatatable.format import measure_width
+
+    if _console is None:
+        from rich.console import Console
+
+        _console = Console()
+    return measure_width(value, _console)
 
 
 def create_backend(
@@ -309,7 +328,6 @@ class ArrowBackend(DataTableBackend[pa.Table]):
             self.data = data.slice(offset=0, length=max_rows)
         else:
             self.data = data
-        self._console = Console()
         self._column_content_widths: list[int] = []
 
     @staticmethod
@@ -492,7 +510,7 @@ class ArrowBackend(DataTableBackend[pa.Table]):
 
         self.data = self.data.append_column(label, arr)
         if self._column_content_widths:
-            self._column_content_widths.append(measure_width(default, self._console))
+            self._column_content_widths.append(_measure_width(default))
         return self.data.num_columns - 1
 
     def append_rows(self, records: Iterable[Iterable[Any]]) -> list[int]:
@@ -530,7 +548,7 @@ class ArrowBackend(DataTableBackend[pa.Table]):
         )
         if self._column_content_widths:
             self._column_content_widths[column_index] = max(
-                measure_width(value, self._console),
+                _measure_width(value),
                 self._column_content_widths[column_index],
             )
 
@@ -566,7 +584,7 @@ class ArrowBackend(DataTableBackend[pa.Table]):
                 col_min = pc.min(arr.fill_null(0)).as_py()
             except OverflowError:
                 col_min = -9223372036854775807
-            return max([measure_width(el, self._console) for el in [col_max, col_min]])
+            return max([_measure_width(el) for el in [col_max, col_min]])
         elif pt.is_temporal(arr.type):
             try:
                 value = arr.drop_null()[0].as_py()
@@ -576,7 +594,7 @@ class ArrowBackend(DataTableBackend[pa.Table]):
                 return 24
             else:
                 # valid temporal types all have the same width for their type
-                return measure_width(value, self._console)
+                return _measure_width(value)
 
         # for everything else, we need to compute it
         # First, cast the data to strings
@@ -684,7 +702,6 @@ if _HAS_POLARS:
                 self.data = data.slice(offset=0, length=max_rows)
             else:
                 self.data = data
-            self._console = Console()
             self._column_content_widths: list[int] = []
 
         @property
@@ -763,9 +780,7 @@ if _HAS_POLARS:
                 .alias(label)
             )
             if self._column_content_widths:
-                self._column_content_widths.append(
-                    measure_width(default, self._console)
-                )
+                self._column_content_widths.append(_measure_width(default))
             return len(self.data.columns) - 1
 
         def _reset_content_widths(self) -> None:
@@ -786,7 +801,7 @@ if _HAS_POLARS:
             )
             if self._column_content_widths:
                 self._column_content_widths[column_index] = max(
-                    measure_width(value, self._console),
+                    _measure_width(value),
                     self._column_content_widths[column_index],
                 )
 
@@ -811,16 +826,14 @@ if _HAS_POLARS:
             if dtype.is_decimal() or dtype.is_float() or dtype.is_integer():
                 col_max = arr.max()
                 col_min = arr.min()
-                return max(
-                    [measure_width(el, self._console) for el in [col_max, col_min]]
-                )
+                return max([_measure_width(el) for el in [col_max, col_min]])
             if dtype.is_temporal():
                 try:
                     value = arr.drop_nulls()[0]
                 except IndexError:
                     return 0
                 else:
-                    return measure_width(value, self._console)
+                    return _measure_width(value)
             if dtype.is_(pld.Boolean()):
                 return 7
 
