@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.17.1] - 2026-08-10
+
 - `textual_fastdatatable.backend` can now be imported without importing `rich`, which is
   now imported (with the `Console` it provides) on the first column-width measurement, so
   consumers that never render skip ~50 modules and ~30ms
@@ -216,7 +218,8 @@ All notable changes to this project will be documented in this file.
 
 - Initial release. Adds DataTable and ArrowBackend, which is 1000x faster for datasets of 500k records or more.
 
-[unreleased]: https://github.com/tconbeer/textual-fastdatatable/compare/0.17.0...HEAD
+[unreleased]: https://github.com/tconbeer/textual-fastdatatable/compare/0.17.1...HEAD
+[0.17.1]: https://github.com/tconbeer/textual-fastdatatable/compare/0.17.0...0.17.1
 [0.17.0]: https://github.com/tconbeer/textual-fastdatatable/compare/0.16.1...0.17.0
 [0.16.1]: https://github.com/tconbeer/textual-fastdatatable/compare/0.16.0...0.16.1
 [0.16.0]: https://github.com/tconbeer/textual-fastdatatable/compare/0.15.0...0.16.0
