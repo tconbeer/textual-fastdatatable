@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+- `textual_fastdatatable.backend` can now be imported without importing `rich`, which is
+  now imported (with the `Console` it provides) on the first column-width measurement, so
+  consumers that never render skip ~50 modules and ~30ms
+  ([#168](https://github.com/tconbeer/textual-fastdatatable/issues/168)).
+
 ## [0.17.0] - 2026-08-09
 
 - `create_backend()` (and the backend constructors it dispatches to) now accept a
