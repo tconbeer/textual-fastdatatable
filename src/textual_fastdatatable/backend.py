@@ -622,6 +622,9 @@ class ArrowBackend(DataTableBackend[pa.Table]):
 
             arr = pc.call_function(udf_name, [arr])
 
+        # remove rich markup text from width calculation
+        arr = pc.replace_substring_regex(arr, pattern=r'\[/?[a-zA-Z0-9 _.#=,]*\]', replacement='')
+
         # next, try to measure the UTF-encoded string length of each cell,
         # then take the max
         try:
