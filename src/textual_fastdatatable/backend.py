@@ -51,6 +51,7 @@ def create_backend(
     max_rows: int | None = None,
     has_header: bool = False,
     column_names: Sequence[str] | None = None,
+    render_markup: bool = True,
 ) -> DataTableBackend:
     """Create a backend for `data`, picking the implementation from its type.
 
@@ -78,12 +79,12 @@ def create_backend(
         When `column_names` is not passed, every case behaves as it always has.
     """
     if data is None and column_names is not None:
-        return ArrowBackend(_empty_table(column_names), max_rows=max_rows)
+        return ArrowBackend(_empty_table(column_names), max_rows=max_rows, render_markup=render_markup)
     if isinstance(data, pa.Table):
-        return ArrowBackend(data, max_rows=max_rows, column_names=column_names)
+        return ArrowBackend(data, max_rows=max_rows, column_names=column_names, render_markup=render_markup)
     if isinstance(data, pa.RecordBatch):
         return ArrowBackend.from_batches(
-            data, max_rows=max_rows, column_names=column_names
+            data, max_rows=max_rows, column_names=column_names, render_markup=render_markup
         )
     if _HAS_POLARS and isinstance(data, pl.DataFrame):
         return PolarsBackend.from_dataframe(
@@ -91,14 +92,14 @@ def create_backend(
         )
     if _is_pandas_dataframe(data):
         return ArrowBackend.from_pandas(
-            data, max_rows=max_rows, column_names=column_names
+            data, max_rows=max_rows, column_names=column_names, render_markup=render_markup
         )
 
     if isinstance(data, Path) or isinstance(data, str):
         data = Path(data)
         if data.suffix in [".pqt", ".parquet"]:
             return ArrowBackend.from_parquet(
-                data, max_rows=max_rows, column_names=column_names
+                data, max_rows=max_rows, column_names=column_names, render_markup=render_markup
             )
         if _HAS_POLARS:
             return PolarsBackend.from_file_path(
@@ -108,10 +109,10 @@ def create_backend(
                 column_names=column_names,
             )
     if isinstance(data, Sequence) and not data:
-        return ArrowBackend(pa.table([]), max_rows=max_rows, column_names=column_names)
+        return ArrowBackend(pa.table([]), max_rows=max_rows, column_names=column_names, render_markup=render_markup)
     if isinstance(data, Sequence) and _is_iterable(data[0]):
         return ArrowBackend.from_records(
-            data, max_rows=max_rows, has_header=has_header, column_names=column_names
+            data, max_rows=max_rows, has_header=has_header, column_names=column_names, render_markup=render_markup
         )
 
     if (
@@ -120,7 +121,7 @@ def create_backend(
         and isinstance(next(iter(data.values())), Sequence)
     ):
         return ArrowBackend.from_pydict(
-            data, max_rows=max_rows, column_names=column_names
+            data, max_rows=max_rows, column_names=column_names, render_markup=render_markup
         )
 
     raise TypeError(
@@ -200,6 +201,7 @@ class DataTableBackend(ABC, Generic[_TableTypeT]):
         data: _TableTypeT,
         max_rows: int | None = None,
         column_names: Sequence[str] | None = None,
+        render_markup: bool = True,
     ) -> None:
         pass
 
@@ -210,6 +212,7 @@ class DataTableBackend(ABC, Generic[_TableTypeT]):
         data: Mapping[str, Sequence[Any]],
         max_rows: int | None = None,
         column_names: Sequence[str] | None = None,
+        render_markup: bool = True,
     ) -> "DataTableBackend":
         pass
 
@@ -310,6 +313,7 @@ class ArrowBackend(DataTableBackend[pa.Table]):
         data: pa.Table,
         max_rows: int | None = None,
         column_names: Sequence[str] | None = None,
+        render_markup: bool = True,
     ) -> None:
         # the caller's names are applied first, so that source_data carries them
         # verbatim, duplicates and all.
@@ -329,6 +333,7 @@ class ArrowBackend(DataTableBackend[pa.Table]):
         else:
             self.data = data
         self._column_content_widths: list[int] = []
+        self.render_markup = render_markup
 
     @staticmethod
     def _pydict_from_records(
@@ -375,9 +380,10 @@ class ArrowBackend(DataTableBackend[pa.Table]):
         data: pa.RecordBatch,
         max_rows: int | None = None,
         column_names: Sequence[str] | None = None,
+        render_markup: bool = True,
     ) -> "ArrowBackend":
         tbl = pa.Table.from_batches([data])
-        return cls(tbl, max_rows=max_rows, column_names=column_names)
+        return cls(tbl, max_rows=max_rows, column_names=column_names, render_markup=render_markup)
 
     @classmethod
     def from_parquet(
@@ -385,13 +391,14 @@ class ArrowBackend(DataTableBackend[pa.Table]):
         path: Path | str,
         max_rows: int | None = None,
         column_names: Sequence[str] | None = None,
+        render_markup: bool = True,
     ) -> "ArrowBackend":
         # deferred: parquet is the only pyarrow submodule not used elsewhere in
         # this module, and it is expensive to import.
         import pyarrow.parquet as pq
 
         tbl = pq.read_table(str(path))
-        return cls(tbl, max_rows=max_rows, column_names=column_names)
+        return cls(tbl, max_rows=max_rows, column_names=column_names, render_markup=render_markup)
 
     @classmethod
     def from_pandas(
@@ -399,6 +406,7 @@ class ArrowBackend(DataTableBackend[pa.Table]):
         frame: Any,
         max_rows: int | None = None,
         column_names: Sequence[str] | None = None,
+        render_markup: bool = True,
     ) -> "ArrowBackend":
         """Create a backend from a pandas DataFrame.
 
@@ -406,7 +414,7 @@ class ArrowBackend(DataTableBackend[pa.Table]):
         show it as a column.
         """
         tbl = pa.Table.from_pandas(frame, preserve_index=False)
-        return cls(tbl, max_rows=max_rows, column_names=column_names)
+        return cls(tbl, max_rows=max_rows, column_names=column_names, render_markup=render_markup)
 
     @classmethod
     def from_pydict(
@@ -414,6 +422,7 @@ class ArrowBackend(DataTableBackend[pa.Table]):
         data: Mapping[str, Sequence[Any]],
         max_rows: int | None = None,
         column_names: Sequence[str] | None = None,
+        render_markup: bool = True,
     ) -> "ArrowBackend":
         try:
             tbl = pa.Table.from_pydict(dict(data))
@@ -425,7 +434,7 @@ class ArrowBackend(DataTableBackend[pa.Table]):
                 for k, v in data.items()
             }
             tbl = pa.Table.from_pydict(new_data)
-        return cls(tbl, max_rows=max_rows, column_names=column_names)
+        return cls(tbl, max_rows=max_rows, column_names=column_names, render_markup=render_markup)
 
     @classmethod
     def from_records(
@@ -434,11 +443,12 @@ class ArrowBackend(DataTableBackend[pa.Table]):
         has_header: bool = False,
         max_rows: int | None = None,
         column_names: Sequence[str] | None = None,
+        render_markup: bool = True,
     ) -> "ArrowBackend":
         # column_names are applied by __init__, after the table is built: a
         # pydict keyed by them would drop any duplicates among them.
         pydict = cls._pydict_from_records(records, has_header)
-        return cls.from_pydict(pydict, max_rows=max_rows, column_names=column_names)
+        return cls.from_pydict(pydict, max_rows=max_rows, column_names=column_names, render_markup=render_markup)
 
     @property
     def source_data(self) -> pa.Table:
@@ -623,7 +633,8 @@ class ArrowBackend(DataTableBackend[pa.Table]):
             arr = pc.call_function(udf_name, [arr])
 
         # remove rich markup text from width calculation
-        arr = pc.replace_substring_regex(arr, pattern=r'\[/?[a-zA-Z0-9 _.#=,]*\]', replacement='')
+        if self.render_markup:
+            arr = pc.replace_substring_regex(arr, pattern=r'\[/?[a-zA-Z0-9 _.#=,]*\]', replacement='')
 
         # next, try to measure the UTF-encoded string length of each cell,
         # then take the max

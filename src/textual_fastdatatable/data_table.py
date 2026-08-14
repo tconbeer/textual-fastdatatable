@@ -575,6 +575,7 @@ class DataTable(ScrollView, can_focus=True):
                     data,
                     max_rows=max_rows,
                     has_header=(column_labels is None),
+                    render_markup=render_markup
                 )
             )
         except (TypeError, OSError) as e:
