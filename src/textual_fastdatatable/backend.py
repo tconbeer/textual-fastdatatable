@@ -28,6 +28,11 @@ else:
 
 _console: "Console | None" = None
 
+_RICH_MARKUP_TAG_PATTERN = r"\[{2,}[^\]]*\]{2,}|(\[\/?[a-zA-Z0-9_\s#=.:/\-\(\)]+?\])"
+"""
+Matches tags like [yellow on black] but not escaped double brackets like [[]]
+"""
+
 
 def _measure_width(value: Any) -> int:
     """The rendered width of one value, for column_content_widths.
@@ -79,12 +84,22 @@ def create_backend(
         When `column_names` is not passed, every case behaves as it always has.
     """
     if data is None and column_names is not None:
-        return ArrowBackend(_empty_table(column_names), max_rows=max_rows, render_markup=render_markup)
+        return ArrowBackend(
+            _empty_table(column_names), max_rows=max_rows, render_markup=render_markup
+        )
     if isinstance(data, pa.Table):
-        return ArrowBackend(data, max_rows=max_rows, column_names=column_names, render_markup=render_markup)
+        return ArrowBackend(
+            data,
+            max_rows=max_rows,
+            column_names=column_names,
+            render_markup=render_markup,
+        )
     if isinstance(data, pa.RecordBatch):
         return ArrowBackend.from_batches(
-            data, max_rows=max_rows, column_names=column_names, render_markup=render_markup
+            data,
+            max_rows=max_rows,
+            column_names=column_names,
+            render_markup=render_markup,
         )
     if _HAS_POLARS and isinstance(data, pl.DataFrame):
         return PolarsBackend.from_dataframe(
@@ -92,14 +107,20 @@ def create_backend(
         )
     if _is_pandas_dataframe(data):
         return ArrowBackend.from_pandas(
-            data, max_rows=max_rows, column_names=column_names, render_markup=render_markup
+            data,
+            max_rows=max_rows,
+            column_names=column_names,
+            render_markup=render_markup,
         )
 
     if isinstance(data, Path) or isinstance(data, str):
         data = Path(data)
         if data.suffix in [".pqt", ".parquet"]:
             return ArrowBackend.from_parquet(
-                data, max_rows=max_rows, column_names=column_names, render_markup=render_markup
+                data,
+                max_rows=max_rows,
+                column_names=column_names,
+                render_markup=render_markup,
             )
         if _HAS_POLARS:
             return PolarsBackend.from_file_path(
@@ -109,10 +130,19 @@ def create_backend(
                 column_names=column_names,
             )
     if isinstance(data, Sequence) and not data:
-        return ArrowBackend(pa.table([]), max_rows=max_rows, column_names=column_names, render_markup=render_markup)
+        return ArrowBackend(
+            pa.table([]),
+            max_rows=max_rows,
+            column_names=column_names,
+            render_markup=render_markup,
+        )
     if isinstance(data, Sequence) and _is_iterable(data[0]):
         return ArrowBackend.from_records(
-            data, max_rows=max_rows, has_header=has_header, column_names=column_names, render_markup=render_markup
+            data,
+            max_rows=max_rows,
+            has_header=has_header,
+            column_names=column_names,
+            render_markup=render_markup,
         )
 
     if (
@@ -121,7 +151,10 @@ def create_backend(
         and isinstance(next(iter(data.values())), Sequence)
     ):
         return ArrowBackend.from_pydict(
-            data, max_rows=max_rows, column_names=column_names, render_markup=render_markup
+            data,
+            max_rows=max_rows,
+            column_names=column_names,
+            render_markup=render_markup,
         )
 
     raise TypeError(
@@ -383,7 +416,12 @@ class ArrowBackend(DataTableBackend[pa.Table]):
         render_markup: bool = True,
     ) -> "ArrowBackend":
         tbl = pa.Table.from_batches([data])
-        return cls(tbl, max_rows=max_rows, column_names=column_names, render_markup=render_markup)
+        return cls(
+            tbl,
+            max_rows=max_rows,
+            column_names=column_names,
+            render_markup=render_markup,
+        )
 
     @classmethod
     def from_parquet(
@@ -398,7 +436,12 @@ class ArrowBackend(DataTableBackend[pa.Table]):
         import pyarrow.parquet as pq
 
         tbl = pq.read_table(str(path))
-        return cls(tbl, max_rows=max_rows, column_names=column_names, render_markup=render_markup)
+        return cls(
+            tbl,
+            max_rows=max_rows,
+            column_names=column_names,
+            render_markup=render_markup,
+        )
 
     @classmethod
     def from_pandas(
@@ -414,7 +457,12 @@ class ArrowBackend(DataTableBackend[pa.Table]):
         show it as a column.
         """
         tbl = pa.Table.from_pandas(frame, preserve_index=False)
-        return cls(tbl, max_rows=max_rows, column_names=column_names, render_markup=render_markup)
+        return cls(
+            tbl,
+            max_rows=max_rows,
+            column_names=column_names,
+            render_markup=render_markup,
+        )
 
     @classmethod
     def from_pydict(
@@ -434,7 +482,12 @@ class ArrowBackend(DataTableBackend[pa.Table]):
                 for k, v in data.items()
             }
             tbl = pa.Table.from_pydict(new_data)
-        return cls(tbl, max_rows=max_rows, column_names=column_names, render_markup=render_markup)
+        return cls(
+            tbl,
+            max_rows=max_rows,
+            column_names=column_names,
+            render_markup=render_markup,
+        )
 
     @classmethod
     def from_records(
@@ -448,7 +501,12 @@ class ArrowBackend(DataTableBackend[pa.Table]):
         # column_names are applied by __init__, after the table is built: a
         # pydict keyed by them would drop any duplicates among them.
         pydict = cls._pydict_from_records(records, has_header)
-        return cls.from_pydict(pydict, max_rows=max_rows, column_names=column_names, render_markup=render_markup)
+        return cls.from_pydict(
+            pydict,
+            max_rows=max_rows,
+            column_names=column_names,
+            render_markup=render_markup,
+        )
 
     @property
     def source_data(self) -> pa.Table:
@@ -634,7 +692,9 @@ class ArrowBackend(DataTableBackend[pa.Table]):
 
         # remove rich markup text from width calculation
         if self.render_markup:
-            arr = pc.replace_substring_regex(arr, pattern=r'\[/?[a-zA-Z0-9 _.#=,]*\]', replacement='')
+            arr = pc.replace_substring_regex(
+                arr, pattern=_RICH_MARKUP_TAG_PATTERN, replacement=""
+            )
 
         # next, try to measure the UTF-encoded string length of each cell,
         # then take the max
@@ -676,9 +736,13 @@ if _HAS_POLARS:
             pydict: Mapping[str, Sequence[Any]],
             max_rows: int | None = None,
             column_names: Sequence[str] | None = None,
+            render_markup: bool = True,
         ) -> "PolarsBackend":
             return cls(
-                pl.from_dict(pydict), max_rows=max_rows, column_names=column_names
+                pl.from_dict(pydict),
+                max_rows=max_rows,
+                column_names=column_names,
+                render_markup=render_markup,
             )
 
         @classmethod
@@ -695,6 +759,7 @@ if _HAS_POLARS:
             data: pl.DataFrame,
             max_rows: int | None = None,
             column_names: Sequence[str] | None = None,
+            render_markup: bool = True,
         ) -> None:
             self._source_data = data
 
@@ -717,6 +782,7 @@ if _HAS_POLARS:
             else:
                 self.data = data
             self._column_content_widths: list[int] = []
+            self.render_markup = render_markup
 
         @property
         def source_data(self) -> pl.DataFrame:
@@ -857,6 +923,10 @@ if _HAS_POLARS:
                 pl.Utf8(),
                 strict=False,
             )
+
+            # remove rich markup text from width calculation
+            if self.render_markup:
+                arr = arr.str.replace_all(_RICH_MARKUP_TAG_PATTERN, "")
             width = arr.fill_null("<null>").str.len_chars().max()
             assert isinstance(width, int)
             return width
