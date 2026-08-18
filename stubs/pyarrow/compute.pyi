@@ -7,6 +7,7 @@ from . import DataType, MemoryPool, Scalar, _PandasConvertible
 
 class Expression: ...
 class ScalarAggregateOptions: ...
+class ReplaceSubstringOptions: ...
 
 class CastOptions:
     def __init__(
@@ -60,5 +61,15 @@ def assume_timezone(
     ambiguous: Literal["raise", "earliest", "latest"] = "raise",
     nonexistent: Literal["raise", "earliest", "latest"] = "raise",
     options: Any | None = None,
+    memory_pool: MemoryPool | None = None,
+) -> _PandasConvertible: ...
+def replace_substring_regex(
+    strings: _PandasConvertible,
+    /,
+    pattern: str,
+    replacement: str,
+    *,
+    max_replacements: int | None = None,
+    options: ReplaceSubstringOptions | None = None,
     memory_pool: MemoryPool | None = None,
 ) -> _PandasConvertible: ...

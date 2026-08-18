@@ -28,6 +28,19 @@ else:
 
 _console: "Console | None" = None
 
+_RENDER_MARKUP_DEFAULT = False
+"""
+This is false only when there is no DataTable front-end is attached...
+as soon as the front-end is attached, the backend will take its value,
+unless column widths have already been computed, in which case the backend
+will raise an error.
+"""
+
+_RICH_MARKUP_TAG_PATTERN = r"\[{2,}[^\]]*\]{2,}|(\[\/?[a-zA-Z0-9_\s#=.:/\-\(\)]+?\])"
+"""
+Matches tags like [yellow on black] but not escaped double brackets like [[]]
+"""
+
 
 def _measure_width(value: Any) -> int:
     """The rendered width of one value, for column_content_widths.
@@ -201,7 +214,7 @@ class DataTableBackend(ABC, Generic[_TableTypeT]):
         max_rows: int | None = None,
         column_names: Sequence[str] | None = None,
     ) -> None:
-        pass
+        self._render_markup: bool | None = None
 
     @classmethod
     @abstractmethod
@@ -248,6 +261,30 @@ class DataTableBackend(ABC, Generic[_TableTypeT]):
         A list of column labels
         """
         pass
+
+    @property
+    def render_markup(self) -> bool:
+        """
+        If true, column content widths reflect the rendered width. If
+        accessed before being set, automatically sets to the default
+        value.
+        """
+        if self._render_markup is None:
+            self._render_markup = _RENDER_MARKUP_DEFAULT
+        return self._render_markup
+
+    @render_markup.setter
+    def render_markup(self, new_value: bool) -> None:
+        """
+        Set the render_markup property, but do NOT allow this to be changed
+        after it is set the first time.
+        """
+        if self._render_markup is not None and self._render_markup != new_value:
+            raise ValueError(
+                "Cannot change render_markup once set or accessed. "
+                f"Already set to {self._render_markup}"
+            )
+        self._render_markup = new_value
 
     @property
     @abstractmethod
@@ -329,6 +366,8 @@ class ArrowBackend(DataTableBackend[pa.Table]):
         else:
             self.data = data
         self._column_content_widths: list[int] = []
+        # default _render_markup to an "unset" value
+        self._render_markup = None
 
     @staticmethod
     def _pydict_from_records(
@@ -622,6 +661,12 @@ class ArrowBackend(DataTableBackend[pa.Table]):
 
             arr = pc.call_function(udf_name, [arr])
 
+        # remove rich markup text from width calculation
+        if self.render_markup:
+            arr = pc.replace_substring_regex(
+                arr, pattern=_RICH_MARKUP_TAG_PATTERN, replacement=""
+            )
+
         # next, try to measure the UTF-encoded string length of each cell,
         # then take the max
         try:
@@ -703,6 +748,7 @@ if _HAS_POLARS:
             else:
                 self.data = data
             self._column_content_widths: list[int] = []
+            self._render_markup = None
 
         @property
         def source_data(self) -> pl.DataFrame:
@@ -843,6 +889,10 @@ if _HAS_POLARS:
                 pl.Utf8(),
                 strict=False,
             )
+
+            # remove rich markup text from width calculation
+            if self.render_markup:
+                arr = arr.str.replace_all(_RICH_MARKUP_TAG_PATTERN, "")
             width = arr.fill_null("<null>").str.len_chars().max()
             assert isinstance(width, int)
             return width

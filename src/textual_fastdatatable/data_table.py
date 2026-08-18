@@ -572,15 +572,16 @@ class DataTable(ScrollView, can_focus=True):
                 backend
                 if backend is not None
                 else create_backend(
-                    data,
-                    max_rows=max_rows,
-                    has_header=(column_labels is None),
+                    data, max_rows=max_rows, has_header=(column_labels is None)
                 )
             )
         except (TypeError, OSError) as e:
             self.backend = None
             if data is not None:
                 self.post_message(self.DataLoadError(e))
+
+        if self.backend is not None:
+            self.backend.render_markup = render_markup
 
         self._column_labels: list[str | Text] | None = (
             list(column_labels) if column_labels is not None else None
