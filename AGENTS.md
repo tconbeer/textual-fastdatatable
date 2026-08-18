@@ -76,12 +76,21 @@ reporting the full input — the widget shows both counts.
 `column_content_widths` is the hot path for first paint. Each backend computes it with
 vectorized column operations rather than per-cell Python (`_measure`): booleans and nulls
 are constants, numerics measure only min/max, temporals measure one non-null value, and
-everything else casts the whole column to string and takes `max(utf8_length)` (a
-character count, not a cell count — the vectorized path cannot afford per-value
-measurement). The per-value fallback is `backend._measure_width`, a lazy wrapper around
-`format.measure_width` (see Conventions). The result
+everything else casts the whole column to string and takes the widest result of
+`_measure_strings`. That runs `_cell_widths` as an Arrow scalar UDF, which measures an
+array in cells rather than characters: an array with as many bytes as characters is all
+ASCII, so Arrow's own character count is its width, and anything else is measured with
+`wcwidth`, once per distinct non-ASCII value, and mapped back over the rows by Arrow.
+The per-value fallback for non-strings is `backend._measure_width`, a lazy wrapper
+around `format.measure_width` (see Conventions). The result
 is cached on the backend and cleared by `_reset_content_widths()` on mutation. The Arrow
-path registers a PyArrow scalar UDF as a fallback for types Arrow can't cast to string.
+path registers another scalar UDF as a fallback for types Arrow can't cast to string.
+
+Both UDFs are registered through `_register_udf`, which registers a name at most once:
+`pc.register_scalar_function` raises for a name that is taken **and drops a reference to
+the function already registered under it**, so re-registering segfaults pyarrow a couple
+of calls later. `tests/unit_tests/test_backends.py::test_column_content_widths_are_repeatable`
+guards this.
 
 `format.measure_width` is the one place a width is measured: it formats the value with
 `cell_formatter` and measures the result in cells against a console. The widget passes
@@ -132,7 +141,7 @@ message on `ctrl+c`/`super+c` — this requires the host app to be built with
 - `backend.py` must stay importable without Textual or rich, so that downstream consumers
   (harlequin's headless `hsql` CLI) can use `create_backend()` as a normalizer without
   paying for display. `format.py` and `column.py` may use rich, but must stay free of
-  Textual. Three deliberate deferrals keep this true:
+  Textual. Four deliberate deferrals keep this true:
   - `__init__.py` imports `DataTable` lazily via a module-level `__getattr__` (PEP 562),
     with a `TYPE_CHECKING` import so mypy still resolves it for downstream users. A
     convenience import at the top of `__init__.py` silently undoes this.
@@ -142,8 +151,10 @@ message on `ctrl+c`/`super+c` — this requires the host app to be built with
   - `backend._measure_width` imports `format.measure_width` (and rich with it, plus the
     `Console` that module builds on its first measurement) on first call. Backends must
     not import rich or `format` at module scope, or construct a `Console` in `__init__`.
+  - `backend._cell_widths` imports `wcwidth` only when a column is not all ASCII, so an
+    ASCII table never pays for its tables.
 
-  `tests/unit_tests/test_lazy_imports.py` asserts all three, in a subprocess. To check by
+  `tests/unit_tests/test_lazy_imports.py` asserts all four, in a subprocess. To check by
   hand (all `False`; the import costs ~225 modules on 3.10 against the required deps, 450
   with the `polars` extra, which `uv sync` installs):
 

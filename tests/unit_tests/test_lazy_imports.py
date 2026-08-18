@@ -5,7 +5,7 @@ import pytest
 
 # importing the backend must not import these; each is deferred to its use site,
 # so that consumers that never render pay for none of them.
-DEFERRED = ["textual", "rich", "pyarrow.parquet"]
+DEFERRED = ["textual", "rich", "pyarrow.parquet", "wcwidth"]
 
 
 def _imported_modules(script: str) -> set[str]:
@@ -38,6 +38,30 @@ def test_measuring_widths_imports_rich() -> None:
         "print('\\n'.join(sys.modules))\n"
     )
     assert "rich" in modules
+
+
+def test_measuring_ascii_does_not_import_wcwidth() -> None:
+    """The all-ASCII fast path in the cell-width UDF stays in Arrow."""
+    modules = _imported_modules(
+        "import sys\n"
+        "from textual_fastdatatable.backend import create_backend\n"
+        "backend = create_backend({'a': ['abc', 'de']})\n"
+        "assert backend.column_content_widths == [3]\n"
+        "print('\\n'.join(sys.modules))\n"
+    )
+    assert "wcwidth" not in modules
+
+
+def test_measuring_wide_characters_imports_wcwidth() -> None:
+    """A column that is not all ASCII has to be measured character by character."""
+    modules = _imported_modules(
+        "import sys\n"
+        "from textual_fastdatatable.backend import create_backend\n"
+        "backend = create_backend({'a': ['\u65e5\u672c\u8a9e', 'de']})\n"
+        "assert backend.column_content_widths == [6]\n"
+        "print('\\n'.join(sys.modules))\n"
+    )
+    assert "wcwidth" in modules
 
 
 def test_console_is_built_on_first_measurement() -> None:

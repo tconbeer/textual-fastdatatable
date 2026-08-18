@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import sys
 from abc import ABC, abstractmethod
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from contextlib import suppress
 from datetime import date, datetime
 from pathlib import Path
@@ -35,6 +35,97 @@ _RICH_MARKUP_TAG_PATTERN = r"\[{2,}[^\]]*\]{2,}|(\[\/?[a-zA-Z0-9_\s#=.:/\-\(\)]+
 """
 Matches tags like [yellow on black] but not escaped double brackets like [[]]
 """
+
+
+_REGISTERED_UDFS: set[str] = set()
+"""The scalar UDFs registered with Arrow so far, by name. Registering a name that is
+already taken raises — and drops a reference to the function registered under it, so
+that pyarrow segfaults a couple of calls later — so each name is registered once."""
+
+
+def _register_udf(
+    name: str,
+    func: Callable[..., Any],
+    in_type: pa.DataType,
+    out_type: pa.DataType,
+    summary: str,
+) -> str:
+    """Register `func` as an Arrow scalar UDF of one array, if it is not registered."""
+    if name not in _REGISTERED_UDFS:
+        with suppress(pal.ArrowKeyError):  # registered by someone else
+            pc.register_scalar_function(
+                func,
+                function_name=name,
+                function_doc={"summary": summary, "description": summary},
+                in_types={"arr": in_type},
+                out_type=out_type,
+            )
+        _REGISTERED_UDFS.add(name)
+    return name
+
+
+def _cell_widths(_ctx: Any, arr: pa.Array) -> pa._PandasConvertible:
+    """The width, in cells, of every string in `arr`. Registered by `_measure_strings`.
+
+    An ASCII character is one byte and one cell, so an array that has as many bytes as
+    it has characters — the common case — is measured by Arrow alone and never touches
+    Python. Anything else has to be measured value by value, since a character can
+    occupy two cells (CJK, many emoji) or none (a combining mark); wcwidth is imported
+    at the first column that needs it, and never for a table that is all ASCII.
+    """
+    lengths = pc.utf8_length(arr)
+    # counting bytes is the cheap ASCII test: binary_length is offset arithmetic,
+    # while scanning for non-ASCII bytes (string_is_ascii) costs several times more
+    # than counting the characters does
+    byte_lengths = pc.binary_length(arr)
+    if pc.sum(byte_lengths).as_py() == pc.sum(lengths).as_py():
+        return lengths
+
+    from wcwidth import wcswidth
+
+    def width(value: str) -> int:
+        cells: int = wcswidth(value)
+        # wcswidth measures a string with control characters as -1; count its
+        # characters instead, which is what Arrow would have done
+        return cells if cells >= 0 else len(value)
+
+    # only the strings that are not ASCII have to be measured in Python, and only
+    # once each: Arrow maps the distinct measurements back over the rows. The rest
+    # are as wide as the character count Arrow already has.
+    needs_measuring = pc.not_equal(byte_lengths, lengths).fill_null(False)
+    values = arr.filter(needs_measuring)
+    distinct = pc.unique(values)
+    return pc.replace_with_mask(
+        lengths,
+        needs_measuring,
+        pc.take(
+            pa.array(
+                [width(value) for value in distinct.to_pylist()], type=lengths.type
+            ),
+            pc.index_in(values, value_set=distinct),
+        ),
+    )
+
+
+def _measure_strings(arr: pa._PandasConvertible) -> int:
+    """The width, in cells, of the widest string in `arr`, for column_content_widths.
+
+    Registers `_cell_widths` as a scalar UDF for the array's type on first use, so
+    that Arrow applies it a chunk at a time, and takes the widest result.
+    """
+    udf_name = _register_udf(
+        f"tfdt_cell_width_{arr.type}",
+        _cell_widths,
+        in_type=arr.type,
+        # the width of a large_string can overflow an int32, as its length can
+        out_type=pa.int64() if arr.type == pa.large_string() else pa.int32(),
+        summary="rendered width, in terminal cells",
+    )
+    try:
+        width: int = pc.max(pc.call_function(udf_name, [arr]).fill_null(0)).as_py()
+    except OverflowError:
+        width = 10
+    return width
 
 
 def _measure_width(value: Any) -> int:
@@ -640,16 +731,13 @@ class ArrowBackend(DataTableBackend[pa.Table]):
             def py_str(_ctx: Any, arr: pa.Array) -> str | pa.Array | pa.ChunkedArray:
                 return pa.array([str(el) for el in arr], type=pa.string())
 
-            udf_name = f"tfdt_pystr_{arr.type}"
-            with suppress(pal.ArrowKeyError):  # already registered
-                pc.register_scalar_function(
-                    py_str,
-                    function_name=udf_name,
-                    function_doc={"summary": "str", "description": "built-in str"},
-                    in_types={"arr": arr.type},
-                    out_type=pa.string(),
-                )
-
+            udf_name = _register_udf(
+                f"tfdt_pystr_{arr.type}",
+                py_str,
+                in_type=arr.type,
+                out_type=pa.string(),
+                summary="built-in str",
+            )
             arr = pc.call_function(udf_name, [arr])
 
         # remove rich markup text from width calculation
@@ -658,13 +746,8 @@ class ArrowBackend(DataTableBackend[pa.Table]):
                 arr, pattern=_RICH_MARKUP_TAG_PATTERN, replacement=""
             )
 
-        # next, try to measure the UTF-encoded string length of each cell,
-        # then take the max
-        try:
-            width: int = pc.max(pc.utf8_length(arr.fill_null("")).fill_null(0)).as_py()
-        except OverflowError:
-            width = 10
-        return width
+        # next, measure the rendered width of each cell, then take the max
+        return _measure_strings(arr.fill_null(""))
 
 
 if _HAS_POLARS:
@@ -884,9 +967,8 @@ if _HAS_POLARS:
             # remove rich markup text from width calculation
             if self.render_markup:
                 arr = arr.str.replace_all(_RICH_MARKUP_TAG_PATTERN, "")
-            width = arr.fill_null("<null>").str.len_chars().max()
-            assert isinstance(width, int)
-            return width
+            # measured through Arrow, so that both backends measure the same way
+            return _measure_strings(arr.fill_null("<null>").to_arrow())
 
         def sort(
             self, by: list[tuple[str, Literal["ascending", "descending"]]] | str

@@ -15,6 +15,7 @@ repos:
           - pyarrow-stubs
           - pandas-stubs # scripts/benchmark.py imports pandas
           - polars>=0.20
+          - wcwidth>=0.2.13 # backend._cell_widths
         exclude: "tests/snapshot_tests/"
         args:
           - "--disallow-untyped-calls"

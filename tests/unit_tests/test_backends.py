@@ -2,11 +2,51 @@ from __future__ import annotations
 
 import pytest
 
-from textual_fastdatatable.backend import DataTableBackend
+from textual_fastdatatable.backend import (
+    ArrowBackend,
+    DataTableBackend,
+    PolarsBackend,
+)
 
 
 def test_column_content_widths(backend: DataTableBackend) -> None:
     assert backend.column_content_widths == [1, 8, 6]
+
+
+@pytest.mark.parametrize(
+    "value,expected_width",
+    [
+        ("hello", 5),  # ascii: one cell per character
+        ("日本語", 6),  # three double-width characters
+        ("🙂x", 3),  # a double-width emoji
+        ("señor", 5),  # six characters, one of them a zero-width combining tilde
+        ("a\tb", 3),  # wcwidth measures a control character as -1; count instead
+    ],
+)
+def test_column_content_widths_are_measured_in_cells(
+    backend_class: type[ArrowBackend] | type[PolarsBackend],
+    value: str,
+    expected_width: int,
+) -> None:
+    """A column is as wide as its strings render, not as many chars as they have."""
+    backend = backend_class.from_pydict({"one": [value, "a"]})
+
+    assert backend.column_content_widths == [expected_width]
+
+
+def test_column_content_widths_are_repeatable(
+    backend_class: type[ArrowBackend] | type[PolarsBackend],
+) -> None:
+    """Regression test: measuring re-registered the UDF, which segfaulted pyarrow.
+
+    `pc.register_scalar_function` raises for a name that is taken, and drops a
+    reference to the function already registered under it, so the third call to that
+    function crashed the interpreter.
+    """
+    backend = backend_class.from_pydict({f"col {i}": ["日本語", "a"] for i in range(6)})
+
+    assert backend.column_content_widths == [6] * 6
+    assert backend.column_content_widths == [6] * 6
 
 
 def test_get_row_at(backend: DataTableBackend) -> None:

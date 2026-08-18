@@ -39,6 +39,53 @@ def min(  # noqa: A001
     options: ScalarAggregateOptions | None = None,
     memory_pool: MemoryPool | None = None,
 ) -> Scalar: ...
+def sum(  # noqa: A001
+    array: _PandasConvertible,
+    /,
+    *,
+    skip_nulls: bool = True,
+    min_count: int = 1,
+    options: ScalarAggregateOptions | None = None,
+    memory_pool: MemoryPool | None = None,
+) -> Scalar: ...
+def binary_length(
+    strings: _PandasConvertible, /, *, memory_pool: MemoryPool | None = None
+) -> _PandasConvertible: ...
+def not_equal(
+    x: _PandasConvertible,
+    y: _PandasConvertible,
+    /,
+    *,
+    memory_pool: MemoryPool | None = None,
+) -> _PandasConvertible: ...
+def replace_with_mask(
+    values: _PandasConvertible,
+    mask: _PandasConvertible,
+    replacements: _PandasConvertible,
+    /,
+    *,
+    memory_pool: MemoryPool | None = None,
+) -> _PandasConvertible: ...
+def unique(
+    array: _PandasConvertible, /, *, memory_pool: MemoryPool | None = None
+) -> _PandasConvertible: ...
+def index_in(
+    values: _PandasConvertible,
+    /,
+    value_set: _PandasConvertible,
+    *,
+    skip_nulls: bool = False,
+    options: Any | None = None,
+    memory_pool: MemoryPool | None = None,
+) -> _PandasConvertible: ...
+def take(
+    data: _PandasConvertible,
+    indices: _PandasConvertible,
+    /,
+    *,
+    boundscheck: bool = True,
+    memory_pool: MemoryPool | None = None,
+) -> _PandasConvertible: ...
 def utf8_length(
     strings: _PandasConvertible, /, *, memory_pool: MemoryPool | None = None
 ) -> _PandasConvertible: ...
