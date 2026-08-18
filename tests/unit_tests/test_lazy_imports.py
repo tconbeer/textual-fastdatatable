@@ -38,3 +38,21 @@ def test_measuring_widths_imports_rich() -> None:
         "print('\\n'.join(sys.modules))\n"
     )
     assert "rich" in modules
+
+
+def test_console_is_built_on_first_measurement() -> None:
+    """`format` owns the one Console, and does not build it at import time."""
+    proc = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "from textual_fastdatatable import format\n"
+            "print(format._console is None)\n"
+            "format.measure_width('a')\n"
+            "print(format._console is None)\n",
+        ],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert proc.stdout.split() == ["True", "False"]

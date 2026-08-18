@@ -76,11 +76,22 @@ reporting the full input — the widget shows both counts.
 `column_content_widths` is the hot path for first paint. Each backend computes it with
 vectorized column operations rather than per-cell Python (`_measure`): booleans and nulls
 are constants, numerics measure only min/max, temporals measure one non-null value, and
-everything else casts the whole column to string and takes `max(utf8_length)`. The
-per-value fallback is `backend._measure_width`, which owns the lazily built rich `Console`
-(see Conventions). The result
+everything else casts the whole column to string and takes `max(utf8_length)` (a
+character count, not a cell count — the vectorized path cannot afford per-value
+measurement). The per-value fallback is `backend._measure_width`, a lazy wrapper around
+`format.measure_width` (see Conventions). The result
 is cached on the backend and cleared by `_reset_content_widths()` on mutation. The Arrow
 path registers a PyArrow scalar UDF as a fallback for types Arrow can't cast to string.
+
+`format.measure_width` is the one place a width is measured: it formats the value with
+`cell_formatter` and measures the result in cells against a console. The widget passes
+the app's, via `DataTable._measure`, so a column is never wider than the screen; callers
+with no app (the backend, and the widget before it mounts) get the console this module
+builds lazily, which is `MAX_MEASURE_WIDTH` wide, so nothing caps those measurements.
+Widths are never counted with `len()` — a character can occupy two cells or none. The
+widget measures column labels this way too and folds the result into
+`Column.content_width` in `ordered_columns` and `add_column`, so `Column` itself only
+adds padding.
 
 `column.Column` turns those content widths into render widths (`+ CELL_X_PADDING`,
 clamped by `max_column_content_width` when set). It also detects ID-ish column names by
@@ -128,9 +139,9 @@ message on `ctrl+c`/`super+c` — this requires the host app to be built with
   - `pyarrow.parquet` is imported inside `ArrowBackend.from_parquet`, its only use site.
     `pyarrow.compute`/`types`/`lib` stay at module scope; they're used in the hot path.
     Any module-scope `pq.` use undoes this.
-  - `backend._measure_width` imports rich and `format.measure_width` on first call, and
-    builds its module-level `Console` there. Backends must not import either at module
-    scope, or construct a `Console` in `__init__`.
+  - `backend._measure_width` imports `format.measure_width` (and rich with it, plus the
+    `Console` that module builds on its first measurement) on first call. Backends must
+    not import rich or `format` at module scope, or construct a `Console` in `__init__`.
 
   `tests/unit_tests/test_lazy_imports.py` asserts all three, in a subprocess. To check by
   hand (all `False`; the import costs ~225 modules on 3.10 against the required deps, 450

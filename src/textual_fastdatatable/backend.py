@@ -6,15 +6,12 @@ from collections.abc import Iterable, Mapping, Sequence
 from contextlib import suppress
 from datetime import date, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Generic, Literal, TypeVar
+from typing import Any, Generic, Literal, TypeVar
 
 import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.lib as pal
 import pyarrow.types as pt
-
-if TYPE_CHECKING:
-    from rich.console import Console
 
 AutoBackendType = Any
 
@@ -25,8 +22,6 @@ except ImportError:
     _HAS_POLARS = False
 else:
     _HAS_POLARS = True
-
-_console: "Console | None" = None
 
 _RENDER_MARKUP_DEFAULT = False
 """
@@ -45,18 +40,14 @@ Matches tags like [yellow on black] but not escaped double brackets like [[]]
 def _measure_width(value: Any) -> int:
     """The rendered width of one value, for column_content_widths.
 
-    rich is imported (and the Console built) on first call, so that importing
-    this module costs nothing for consumers that never measure anything.
+    The widget measures column labels the same way, through the same function;
+    it is imported here (and rich with it, and the Console it builds) on first
+    call, so that importing this module costs nothing for consumers that never
+    measure anything.
     """
-    global _console
-
     from textual_fastdatatable.format import measure_width
 
-    if _console is None:
-        from rich.console import Console
-
-        _console = Console()
-    return measure_width(value, _console)
+    return measure_width(value)
 
 
 def create_backend(

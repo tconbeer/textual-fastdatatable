@@ -15,6 +15,36 @@ from rich.text import Text
 
 from textual_fastdatatable.column import Column
 
+MAX_MEASURE_WIDTH = 2**16
+"""The width of the fallback console: with no app to measure against, nothing is known
+about the screen a value will be rendered on, so nothing caps the measurement."""
+
+_console: Console | None = None
+"""The console to measure against when the caller has no app to borrow one from (the
+backend never does). Built on the first measurement, so consumers that never measure
+anything never build a Console."""
+
+
+def measure_width(obj: object, console: Console | None = None) -> int:
+    """The width, in cells, needed to render one value: a cell, or a column label.
+
+    This is the one place widths are measured. They cannot be counted with `len()`:
+    a character can occupy two cells (CJK, many emoji) or none (a combining mark),
+    and a value is measured as `cell_formatter` will render it, not as it is stored.
+    The measurement is capped by the width of `console`, so that a column measured
+    against an app is never wider than its screen.
+    """
+    global _console
+    if console is None:
+        if _console is None:
+            # the flags Textual builds its own console with, so that a value measures
+            # the width it will be rendered at (`:smile:` stays seven cells, not two)
+            _console = Console(
+                width=MAX_MEASURE_WIDTH, markup=True, emoji=False, highlight=False
+            )
+        console = _console
+    return console.measure(cell_formatter(obj, null_rep=Text(""))).maximum
+
 
 def cell_formatter(
     obj: object, null_rep: Text, col: Column | None = None, render_markup: bool = True
@@ -140,8 +170,3 @@ def truncate_renderable(
             Segment.line(),
         ]
     )
-
-
-def measure_width(obj: object, console: Console) -> int:
-    renderable = cell_formatter(obj, null_rep=Text(""))
-    return console.measure(renderable).maximum

@@ -11,6 +11,10 @@ All notable changes to this project will be documented in this file.
   Textual to clear and re-show it indefinitely.
 - The backend now measures column widths based on whether or not strings will be
   rendered as Rich markup ([#171](https://github.com/tconbeer/textual-fastdatatable/pull/171)).
+- Column labels are now measured the same way cell values are, by `format.measure_width`,
+  instead of counted as characters by `Column`, so a header made of double-width
+  characters (CJK, many emoji) is no longer cut off by a too-narrow column
+  ([#144](https://github.com/tconbeer/textual-fastdatatable/issues/144)).
 
 ## [0.17.1] - 2026-08-10
 

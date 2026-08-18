@@ -87,7 +87,5 @@ def test_bytearray_and_memoryview() -> None:
 
 
 def test_bytes_are_measurable() -> None:
-    from rich.console import Console
-
-    width = measure_width(b"[/l\xd9\xfa9Z", Console())
+    width = measure_width(b"[/l\xd9\xfa9Z")
     assert width > 0
