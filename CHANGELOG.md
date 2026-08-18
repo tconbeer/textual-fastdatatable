@@ -9,6 +9,8 @@ All notable changes to this project will be documented in this file.
   content is now truncated (with a `… (truncated)` marker) to at most half the height of
   the screen, so the tooltip can no longer be clamped over the mouse, which caused
   Textual to clear and re-show it indefinitely.
+- The backend now measures column widths based on whether or not strings will be
+  rendered as Rich markup ([#171](https://github.com/tconbeer/textual-fastdatatable/pull/171)).
 
 ## [0.17.1] - 2026-08-10
 
