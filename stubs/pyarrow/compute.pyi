@@ -113,6 +113,50 @@ def take(
 def utf8_length(
     strings: _PandasConvertible, /, *, memory_pool: MemoryPool | None = None
 ) -> _PandasConvertible: ...
+def find_substring(
+    strings: _PandasConvertible,
+    /,
+    pattern: str,
+    *,
+    ignore_case: bool = False,
+    options: Any | None = None,
+    memory_pool: MemoryPool | None = None,
+) -> _PandasConvertible: ...
+def greater_equal(
+    x: _PandasConvertible,
+    y: _PandasConvertible | int,
+    /,
+    *,
+    memory_pool: MemoryPool | None = None,
+) -> _PandasConvertible: ...
+def less(
+    x: _PandasConvertible,
+    y: _PandasConvertible | int,
+    /,
+    *,
+    memory_pool: MemoryPool | None = None,
+) -> _PandasConvertible: ...
+def add(
+    x: _PandasConvertible,
+    y: _PandasConvertible | Scalar | int,
+    /,
+    *,
+    memory_pool: MemoryPool | None = None,
+) -> _PandasConvertible: ...
+def min_element_wise(
+    *args: _PandasConvertible,
+    skip_nulls: bool = True,
+    options: Any | None = None,
+    memory_pool: MemoryPool | None = None,
+) -> _PandasConvertible: ...
+def if_else(
+    cond: _PandasConvertible,
+    left: _PandasConvertible,
+    right: _PandasConvertible,
+    /,
+    *,
+    memory_pool: MemoryPool | None = None,
+) -> _PandasConvertible: ...
 def register_scalar_function(
     func: Callable,
     function_name: str,

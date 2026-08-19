@@ -61,8 +61,10 @@ from textual_fastdatatable.backend import DataTableBackend, create_backend
 from textual_fastdatatable.column import Column
 from textual_fastdatatable.format import (
     cell_formatter,
+    has_line_break,
     measure_width,
     truncate_renderable,
+    truncate_to_first_line,
 )
 
 CursorType = Literal["cell", "range", "row", "column", "none"]
@@ -1783,7 +1785,9 @@ class DataTable(ScrollView, can_focus=True):
         if row_index == -1:
             header_row: list[RenderableType] = [
                 # TODO: make this pluggable so we can override the native labels
-                column.label
+                # a label is truncated the same way a cell is, so that it is
+                # measured and rendered at the same width
+                truncate_to_first_line(column.label)
                 for column in ordered_columns
             ]
             # This is the cell where header and row labels intersect
@@ -1824,7 +1828,7 @@ class DataTable(ScrollView, can_focus=True):
             A RenderableType (or Text) containing the the rendered cell.
         """
         if row_index == -1:
-            return self.ordered_columns[column_index].label
+            return truncate_to_first_line(self.ordered_columns[column_index].label)
 
         datum = self.get_cell_at(Coordinate(row=row_index, column=column_index))
         return cell_formatter(
@@ -2594,10 +2598,17 @@ class DataTable(ScrollView, can_focus=True):
             if raw_value is None:
                 raw_value = self.null_rep
             measured_width = self._measure(raw_value)
+            # a multi-line value is truncated by height rather than by width, so
+            # it needs a tooltip however narrow its first line is: that first
+            # line plus a marker is all the cell shows of it
             if (
-                self.max_column_content_width is not None
-                and measured_width > self.max_column_content_width
-            ) or (measured_width > column.render_width):
+                has_line_break(raw_value)
+                or (
+                    self.max_column_content_width is not None
+                    and measured_width > self.max_column_content_width
+                )
+                or measured_width > column.render_width
+            ):
                 if isinstance(raw_value, str):
                     # a value that fits in the tooltip can never contain more
                     # characters than the tooltip has cells; slicing first keeps
@@ -2615,6 +2626,8 @@ class DataTable(ScrollView, can_focus=True):
                         null_rep=self.null_rep,
                         col=column,
                         render_markup=self.render_markup,
+                        # the tooltip is the place the hidden lines are shown
+                        truncate_multiline=False,
                     )
                 else:
                     renderable = Pretty(raw_value)

@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 
 from textual_fastdatatable.backend import (
+    LINE_BREAKS,
     ArrowBackend,
     DataTableBackend,
     PolarsBackend,
@@ -21,7 +22,11 @@ def test_column_content_widths(backend: DataTableBackend) -> None:
         ("🙂x", 3),  # a double-width emoji
         ("señor", 5),  # six characters, one of them a zero-width combining tilde
         ("a\tb", 3),  # ASCII, tab included: Arrow's character count is its width
-        ("日\nbbbb", 4),  # a multi-line value is as wide as its widest line
+        # a row is one line tall, so only the first line of a multi-line value is
+        # rendered, followed by a one-cell truncation marker
+        ("日\nbbbb", 3),
+        ("aaaa\rb", 5),  # a carriage return ends the first line too
+        ("\nbbbb", 1),  # a value that starts with a break renders as the marker alone
     ],
 )
 def test_column_content_widths_are_measured_in_cells(
@@ -63,6 +68,73 @@ def test_column_content_widths_follow_render_markup(
         backend.render_markup = render_markup
 
         assert backend.column_content_widths == [expected_width]
+
+
+def test_line_breaks_match_the_formatters() -> None:
+    """`backend` cannot import `format`, so its copy of the rules is checked here.
+
+    `backend.LINE_BREAKS` has to be every break `format` clips a value at, and
+    `_MARKER_WIDTH` the width of the marker `format` appends when it does; either
+    one out of step measures every multi-line value wrong.
+    """
+    from textual_fastdatatable.backend import _MARKER_WIDTH
+    from textual_fastdatatable.format import (
+        LINE_BREAK_PROG,
+        MULTILINE_MARKER,
+        measure_width,
+    )
+
+    assert measure_width(MULTILINE_MARKER) == _MARKER_WIDTH
+    for char in map(chr, range(0x110000)):
+        assert (LINE_BREAK_PROG.search(char) is not None) == (char in LINE_BREAKS), (
+            f"format and backend disagree about {char!r}"
+        )
+
+
+@pytest.mark.parametrize(
+    "value,expected_width",
+    [
+        ("aaaa\nbb", 5),
+        ("aaaa\r\nbb", 5),  # the CR ends the line, and the LF after it changes nothing
+        ("aaaa\rbb", 5),
+        ("bb\naaaa", 3),  # the first line is measured, not the widest one
+        ("\naaaa", 1),
+        ("aaaa\n", 5),
+    ],
+)
+def test_multiline_widths_are_measured_over_a_whole_column(
+    backend_class: type[ArrowBackend] | type[PolarsBackend],
+    value: str,
+    expected_width: int,
+) -> None:
+    """Arrow measures a column of ASCII values without ever calling into python.
+
+    Values with no break at all, and enough of them, so that the vectorized path
+    is what answers rather than the per-value one.
+    """
+    rows = ["a"] * 5_000 + [value] + ["a"] * 5_000
+    backend = backend_class.from_pydict({"one": rows})
+
+    assert backend.column_content_widths == [expected_width]
+
+
+def test_line_breaks_are_found_past_the_first_scanned_block() -> None:
+    """The byte scan reads a megabyte at a time; a break in a later block counts."""
+    import pyarrow as pa
+
+    from textual_fastdatatable.backend import _SCAN_BLOCK_SIZE, _line_breaks_in
+
+    def string_array(values: list[str]) -> pa.Array:
+        array = pa.array(values, type=pa.string())
+        assert isinstance(array, pa.Array)
+        return array
+
+    filler = "a" * 1_000
+    rows = [filler] * (_SCAN_BLOCK_SIZE // len(filler) + 10)
+
+    assert _line_breaks_in(string_array(rows)) == ""
+    assert _line_breaks_in(string_array([*rows, "b\nc"])) == "\n"
+    assert _line_breaks_in(string_array([*rows, "b\r\nc"])) == LINE_BREAKS
 
 
 def test_column_content_widths_are_repeatable(

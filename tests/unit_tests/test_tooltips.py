@@ -6,6 +6,7 @@ from typing import NamedTuple
 
 import pytest
 from rich.segment import Segments
+from rich.text import Text
 from textual.app import App, ComposeResult
 from textual.geometry import Offset, Region
 from textual.widgets import Tooltip
@@ -26,6 +27,13 @@ class TooltipApp(App):
     def compose(self) -> ComposeResult:
         # the tooltip only appears for values wider than the rendered column
         yield DataTable(data={"json": [self.value] * 40}, max_column_content_width=20)
+
+
+class WideColumnTooltipApp(TooltipApp):
+    """An app whose column is wide enough for every line of its value."""
+
+    def compose(self) -> ComposeResult:
+        yield DataTable(data={"txt": [self.value] * 40})
 
 
 class RestyledTooltipApp(TooltipApp):
@@ -129,3 +137,26 @@ async def test_short_value_tooltip_is_not_truncated() -> None:
     assert result.displayed
     assert result.content is not None
     assert not isinstance(result.content, Segments)
+
+
+@pytest.mark.asyncio
+async def test_multiline_value_gets_a_tooltip_however_narrow_it_is() -> None:
+    """A cell shows one line of a multi-line value; the tooltip shows the rest.
+
+    The column is wide enough for every line here, so width alone would never
+    trigger a tooltip -- but the cell still only renders the first line.
+    See tconbeer/harlequin#635 and #771.
+    """
+    app = WideColumnTooltipApp("one\ntwo\nthree")
+    result = await _hover_middle_cell(app)
+    assert result.displayed, "no tooltip was shown for a multi-line cell value"
+    assert isinstance(result.content, Text)
+    assert result.content.plain == "one\ntwo\nthree"
+
+
+@pytest.mark.asyncio
+async def test_single_line_value_that_fits_gets_no_tooltip() -> None:
+    """Nothing is hidden, so there is nothing to show."""
+    app = WideColumnTooltipApp("one line")
+    result = await _hover_middle_cell(app)
+    assert result.content is None

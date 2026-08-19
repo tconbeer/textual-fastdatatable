@@ -93,6 +93,17 @@ measure a value when:
   there a `[` at all" test runs first, so a column with no brackets never pays for the
   regex.
 
+A row is one line tall, so a value with a line break renders as its first line plus
+`format.MULTILINE_MARKER`, and is measured that way too: `_measure_cells` takes the
+position of the first break (`pc.find_substring`, which for an all-ASCII value is a
+width) and adds the marker to it. It asks only of a column `_line_breaks_in` has
+already found a break in — scanning the character buffer as bytes costs a few
+milliseconds per million values where the Arrow kernels cost tens, so a column with no
+break in it, which is almost every column, never pays for the search.
+`backend.LINE_BREAKS` and `_MARKER_WIDTH` restate what `format` does, because `backend`
+cannot import it; `test_backends.test_line_breaks_match_the_formatters` holds the two
+in step.
+
 Because `measure_width` renders the value, it has to be told whether the widget renders
 markup; `_measure_cells` is registered as two UDFs per type, `_cell_widths` and
 `_cell_widths_no_markup`, since a UDF is registered under its name for the life of the

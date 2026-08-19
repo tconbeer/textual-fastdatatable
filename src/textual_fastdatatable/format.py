@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 from itertools import chain
@@ -19,6 +20,25 @@ MAX_MEASURE_WIDTH = 2**16
 """The width of the fallback console: with no app to measure against, nothing is known
 about the screen a value will be rendered on, so nothing caps the measurement."""
 
+MULTILINE_MARKER = "…"
+"""Marks a cell whose value carries on past the one line a row has room for.
+
+Rows are always one line tall, so everything below the first line of a multi-line
+value is unrenderable. Without a marker that value is indistinguishable from the
+one line it shows -- and a value that *starts* with a line break is
+indistinguishable from an empty one (tconbeer/harlequin#635). The marker says
+there is more, and the cell's tooltip shows it."""
+
+MULTILINE_MARKER_STYLE = "dim italic"
+"""Styled so the marker reads as a marker, not as data the value ends with."""
+
+LINE_BREAK_PROG = re.compile(r"[\r\n]")
+"""What counts as the end of the first line of a value.
+
+Deliberately only the two breaks that appear in data and that a terminal cannot
+render inline: rich splits lines on ``\n``, and a lone ``\r`` would drive the
+cursor back over the row."""
+
 _console: Console | None = None
 """The console to measure against when the caller has no app to borrow one from (the
 backend never does). Built on the first measurement, so consumers that never measure
@@ -28,6 +48,49 @@ _console_options: ConsoleOptions | None = None
 """The render options of `_console`, built with it. `Console.options` builds a fresh
 ConsoleOptions on every access, which is about half the cost of measuring a short
 value; this console has a fixed width and is never resized, so its options are too."""
+
+
+def has_line_break(obj: object) -> bool:
+    """Whether a value carries on past the first line, so a cell can only show part.
+
+    Only strings (and the `Text` a string is parsed into) can: every other type
+    `cell_formatter` knows renders on one line by construction.
+    """
+    if isinstance(obj, Text):
+        obj = obj.plain
+    return isinstance(obj, str) and LINE_BREAK_PROG.search(obj) is not None
+
+
+def _split_first_line(value: str, truncate: bool) -> tuple[str, bool]:
+    """`value` up to its first line break, and whether one was found."""
+    match = LINE_BREAK_PROG.search(value) if truncate else None
+    if match is None:
+        return value, False
+    return value[: match.start()], True
+
+
+def _escaped(head: str, truncated: bool) -> str:
+    """A string rendered literally, with the truncation marker if it was clipped.
+
+    Escaped strings are returned as markup for the console to unescape, so the
+    marker is markup too -- it is the only part meant to be parsed.
+    """
+    if not truncated:
+        return escape(head)
+    return f"{escape(head)}[{MULTILINE_MARKER_STYLE}]{MULTILINE_MARKER}[/]"
+
+
+def truncate_to_first_line(text: Text) -> Text:
+    """Clip `text` to its first line, marking it if there was more.
+
+    Returns `text` itself when it is already one line, so the common case copies
+    nothing; a multi-line value is sliced (which keeps its styles) rather than
+    mutated, since the caller may not own it.
+    """
+    match = LINE_BREAK_PROG.search(text.plain)
+    if match is None:
+        return text
+    return text[: match.start()].append(MULTILINE_MARKER, style=MULTILINE_MARKER_STYLE)
 
 
 def measure_width(
@@ -43,6 +106,9 @@ def measure_width(
 
     render_markup must match the widget's, so that a string is measured as it will
     be rendered: `[dim]a[/]` is one cell as markup and eleven cells literally.
+
+    A multi-line value measures the width of its first line plus the truncation
+    marker, because that is all of it a one-line row ever renders.
     """
     global _console, _console_options
     options = None
@@ -62,7 +128,11 @@ def measure_width(
 
 
 def cell_formatter(
-    obj: object, null_rep: Text, col: Column | None = None, render_markup: bool = True
+    obj: object,
+    null_rep: Text,
+    col: Column | None = None,
+    render_markup: bool = True,
+    truncate_multiline: bool = True,
 ) -> RenderableType:
     """Convert a cell into a Rich renderable for display.
 
@@ -71,6 +141,11 @@ def cell_formatter(
     Args:
         obj: Data for a cell.
         col: Column that the cell came from (used to compute width).
+        render_markup: Parse strings as console markup, instead of literally.
+        truncate_multiline: Clip a value that spans more than one line to its
+            first line, followed by `MULTILINE_MARKER`. On by default, since a
+            row is one line tall and the rest would be dropped silently. Callers
+            that have room for every line -- the tooltip -- pass False.
 
     Returns:
         A renderable to be displayed which represents the data.
@@ -79,14 +154,19 @@ def cell_formatter(
         return Align(null_rep, align="center")
 
     elif isinstance(obj, str) and render_markup:
+        head, truncated = _split_first_line(obj, truncate_multiline)
         try:
-            rich_text: Text | str = Text.from_markup(obj)
+            rich_text = Text.from_markup(head)
         except MarkupError:
-            rich_text = escape(obj)
+            # an escaped string is handed back as markup, so the marker is too
+            return _escaped(head, truncated)
+        if truncated:
+            rich_text.append(MULTILINE_MARKER, style=MULTILINE_MARKER_STYLE)
         return rich_text
 
     elif isinstance(obj, str):
-        return escape(obj)
+        head, truncated = _split_first_line(obj, truncate_multiline)
+        return _escaped(head, truncated)
 
     elif isinstance(obj, bool):
         return Align(
@@ -145,6 +225,9 @@ def cell_formatter(
         if len(data) > 32:
             preview = f"{preview} (+{len(data) - 32} bytes)"
         return escape(preview)
+
+    elif isinstance(obj, Text):
+        return truncate_to_first_line(obj) if truncate_multiline else obj
 
     elif not is_renderable(obj):
         return str(obj)
