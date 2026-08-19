@@ -11,12 +11,15 @@ All notable changes to this project will be documented in this file.
   Textual to clear and re-show it indefinitely.
 - The backend now measures column widths based on whether or not strings will be
   rendered as Rich markup ([#171](https://github.com/tconbeer/textual-fastdatatable/pull/171)).
+  Markup is no longer stripped with a regex before measuring; rich renders the value
+  instead, so a column of `[[x]]` or `[/]x` is now as wide as it displays.
 - String columns are now measured in terminal cells instead of counted in characters,
   so a column of double-width data (CJK, many emoji) is no longer half the width it
   needs to be, and one of combining marks is no longer wider
   ([#144](https://github.com/tconbeer/textual-fastdatatable/issues/144)). Arrow measures
-  the common case, data that is all ASCII, by itself; anything else is measured with
-  `wcwidth` (a new dependency), once per distinct value.
+  the common case, data that is all ASCII, by itself; anything else is measured by
+  `format.measure_width`, once per distinct value, so a cell is measured exactly as it
+  will be rendered — including whether the widget renders it as Rich markup.
 - Column labels are now measured the same way cell values are, by `format.measure_width`,
   instead of counted as characters by `Column`, so a header made of double-width
   characters (CJK, many emoji) is no longer cut off by a too-narrow column

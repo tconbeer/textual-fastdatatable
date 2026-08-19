@@ -7,7 +7,6 @@ from . import DataType, MemoryPool, Scalar, _PandasConvertible
 
 class Expression: ...
 class ScalarAggregateOptions: ...
-class ReplaceSubstringOptions: ...
 
 class CastOptions:
     def __init__(
@@ -39,7 +38,7 @@ def min(  # noqa: A001
     options: ScalarAggregateOptions | None = None,
     memory_pool: MemoryPool | None = None,
 ) -> Scalar: ...
-def sum(  # noqa: A001
+def any(  # noqa: A001
     array: _PandasConvertible,
     /,
     *,
@@ -48,6 +47,31 @@ def sum(  # noqa: A001
     options: ScalarAggregateOptions | None = None,
     memory_pool: MemoryPool | None = None,
 ) -> Scalar: ...
+def or_(
+    x: _PandasConvertible,
+    y: _PandasConvertible,
+    /,
+    *,
+    memory_pool: MemoryPool | None = None,
+) -> _PandasConvertible: ...
+def match_substring(
+    strings: _PandasConvertible,
+    /,
+    pattern: str,
+    *,
+    ignore_case: bool = False,
+    options: Any | None = None,
+    memory_pool: MemoryPool | None = None,
+) -> _PandasConvertible: ...
+def match_substring_regex(
+    strings: _PandasConvertible,
+    /,
+    pattern: str,
+    *,
+    ignore_case: bool = False,
+    options: Any | None = None,
+    memory_pool: MemoryPool | None = None,
+) -> _PandasConvertible: ...
 def binary_length(
     strings: _PandasConvertible, /, *, memory_pool: MemoryPool | None = None
 ) -> _PandasConvertible: ...
@@ -108,15 +132,5 @@ def assume_timezone(
     ambiguous: Literal["raise", "earliest", "latest"] = "raise",
     nonexistent: Literal["raise", "earliest", "latest"] = "raise",
     options: Any | None = None,
-    memory_pool: MemoryPool | None = None,
-) -> _PandasConvertible: ...
-def replace_substring_regex(
-    strings: _PandasConvertible,
-    /,
-    pattern: str,
-    replacement: str,
-    *,
-    max_replacements: int | None = None,
-    options: ReplaceSubstringOptions | None = None,
     memory_pool: MemoryPool | None = None,
 ) -> _PandasConvertible: ...

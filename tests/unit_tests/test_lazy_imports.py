@@ -5,7 +5,7 @@ import pytest
 
 # importing the backend must not import these; each is deferred to its use site,
 # so that consumers that never render pay for none of them.
-DEFERRED = ["textual", "rich", "pyarrow.parquet", "wcwidth"]
+DEFERRED = ["textual", "rich", "pyarrow.parquet"]
 
 
 def _imported_modules(script: str) -> set[str]:
@@ -40,7 +40,7 @@ def test_measuring_widths_imports_rich() -> None:
     assert "rich" in modules
 
 
-def test_measuring_ascii_does_not_import_wcwidth() -> None:
+def test_measuring_ascii_strings_does_not_import_rich() -> None:
     """The all-ASCII fast path in the cell-width UDF stays in Arrow."""
     modules = _imported_modules(
         "import sys\n"
@@ -49,11 +49,41 @@ def test_measuring_ascii_does_not_import_wcwidth() -> None:
         "assert backend.column_content_widths == [3]\n"
         "print('\\n'.join(sys.modules))\n"
     )
-    assert "wcwidth" not in modules
+    assert "rich" not in modules
 
 
-def test_measuring_wide_characters_imports_wcwidth() -> None:
-    """A column that is not all ASCII has to be measured character by character."""
+def test_measuring_ascii_markup_without_tags_does_not_import_rich() -> None:
+    """Only a value that could be markup is worth handing to rich to measure.
+
+    A bracket is not enough: `_MARKUP_PATTERN` keeps a column of JSON, or of any
+    other bracketed data with no tag in it, on the Arrow fast path.
+    """
+    modules = _imported_modules(
+        "import sys\n"
+        "from textual_fastdatatable.backend import create_backend\n"
+        "backend = create_backend({'a': ['total[1, 2]', 'de']})\n"
+        "backend.render_markup = True\n"
+        "assert backend.column_content_widths == [11]\n"
+        "print('\\n'.join(sys.modules))\n"
+    )
+    assert "rich" not in modules
+
+
+def test_measuring_markup_imports_rich() -> None:
+    """A value that could be markup is measured by rendering it."""
+    modules = _imported_modules(
+        "import sys\n"
+        "from textual_fastdatatable.backend import create_backend\n"
+        "backend = create_backend({'a': ['[dim]abc[/]', 'de']})\n"
+        "backend.render_markup = True\n"
+        "assert backend.column_content_widths == [3]\n"
+        "print('\\n'.join(sys.modules))\n"
+    )
+    assert "rich" in modules
+
+
+def test_measuring_wide_characters_imports_rich() -> None:
+    """A column that is not all ASCII has to be measured value by value."""
     modules = _imported_modules(
         "import sys\n"
         "from textual_fastdatatable.backend import create_backend\n"
@@ -61,7 +91,7 @@ def test_measuring_wide_characters_imports_wcwidth() -> None:
         "assert backend.column_content_widths == [6]\n"
         "print('\\n'.join(sys.modules))\n"
     )
-    assert "wcwidth" in modules
+    assert "rich" in modules
 
 
 def test_console_is_built_on_first_measurement() -> None:

@@ -6,7 +6,7 @@ from itertools import chain
 from typing import cast
 
 from rich.align import Align
-from rich.console import Console, RenderableType
+from rich.console import Console, ConsoleOptions, RenderableType
 from rich.errors import MarkupError
 from rich.markup import escape
 from rich.protocol import is_renderable
@@ -24,8 +24,15 @@ _console: Console | None = None
 backend never does). Built on the first measurement, so consumers that never measure
 anything never build a Console."""
 
+_console_options: ConsoleOptions | None = None
+"""The render options of `_console`, built with it. `Console.options` builds a fresh
+ConsoleOptions on every access, which is about half the cost of measuring a short
+value; this console has a fixed width and is never resized, so its options are too."""
 
-def measure_width(obj: object, console: Console | None = None) -> int:
+
+def measure_width(
+    obj: object, console: Console | None = None, render_markup: bool = True
+) -> int:
     """The width, in cells, needed to render one value: a cell, or a column label.
 
     This is the one place widths are measured. They cannot be counted with `len()`:
@@ -33,8 +40,12 @@ def measure_width(obj: object, console: Console | None = None) -> int:
     and a value is measured as `cell_formatter` will render it, not as it is stored.
     The measurement is capped by the width of `console`, so that a column measured
     against an app is never wider than its screen.
+
+    render_markup must match the widget's, so that a string is measured as it will
+    be rendered: `[dim]a[/]` is one cell as markup and eleven cells literally.
     """
-    global _console
+    global _console, _console_options
+    options = None
     if console is None:
         if _console is None:
             # the flags Textual builds its own console with, so that a value measures
@@ -42,8 +53,12 @@ def measure_width(obj: object, console: Console | None = None) -> int:
             _console = Console(
                 width=MAX_MEASURE_WIDTH, markup=True, emoji=False, highlight=False
             )
-        console = _console
-    return console.measure(cell_formatter(obj, null_rep=Text(""))).maximum
+            _console_options = _console.options
+        console, options = _console, _console_options
+    return console.measure(
+        cell_formatter(obj, null_rep=Text(""), render_markup=render_markup),
+        options=options,
+    ).maximum
 
 
 def cell_formatter(
