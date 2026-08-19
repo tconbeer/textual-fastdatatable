@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.18.0] - 2026-08-19
+
 - Fixes the flickering tooltip reported in
   [tconbeer/harlequin#894](https://github.com/tconbeer/harlequin/issues/894). Tooltip
   content is now truncated (with a `… (truncated)` marker) to at most half the height of
@@ -228,7 +230,8 @@ All notable changes to this project will be documented in this file.
 
 - Initial release. Adds DataTable and ArrowBackend, which is 1000x faster for datasets of 500k records or more.
 
-[unreleased]: https://github.com/tconbeer/textual-fastdatatable/compare/0.17.1...HEAD
+[unreleased]: https://github.com/tconbeer/textual-fastdatatable/compare/0.18.0...HEAD
+[0.18.0]: https://github.com/tconbeer/textual-fastdatatable/compare/0.17.1...0.18.0
 [0.17.1]: https://github.com/tconbeer/textual-fastdatatable/compare/0.17.0...0.17.1
 [0.17.0]: https://github.com/tconbeer/textual-fastdatatable/compare/0.16.1...0.17.0
 [0.16.1]: https://github.com/tconbeer/textual-fastdatatable/compare/0.16.0...0.16.1
