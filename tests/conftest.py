@@ -26,6 +26,15 @@ def records(pydict: dict[str, Sequence[str | int]]) -> list[tuple[str | int, ...
 
 
 @pytest.fixture(params=[ArrowBackend, PolarsBackend])
+def backend_class(
+    request: type[pytest.FixtureRequest],
+) -> type[ArrowBackend] | type[PolarsBackend]:
+    backend_cls: type[ArrowBackend] | type[PolarsBackend] = request.param
+    assert issubclass(backend_cls, (ArrowBackend, PolarsBackend))
+    return backend_cls
+
+
+@pytest.fixture(params=[ArrowBackend, PolarsBackend])
 def backend(
     request: type[pytest.FixtureRequest], pydict: dict[str, Sequence[str | int]]
 ) -> DataTableBackend:

@@ -2,19 +2,16 @@ from __future__ import annotations
 
 import sys
 from abc import ABC, abstractmethod
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from contextlib import suppress
 from datetime import date, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Generic, Literal, TypeVar
+from typing import Any, Generic, Literal, TypeVar
 
 import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.lib as pal
 import pyarrow.types as pt
-
-if TYPE_CHECKING:
-    from rich.console import Console
 
 AutoBackendType = Any
 
@@ -26,8 +23,6 @@ except ImportError:
 else:
     _HAS_POLARS = True
 
-_console: "Console | None" = None
-
 _RENDER_MARKUP_DEFAULT = False
 """
 This is false only when there is no DataTable front-end is attached...
@@ -36,27 +31,145 @@ unless column widths have already been computed, in which case the backend
 will raise an error.
 """
 
-_RICH_MARKUP_TAG_PATTERN = r"\[{2,}[^\]]*\]{2,}|(\[\/?[a-zA-Z0-9_\s#=.:/\-\(\)]+?\])"
-"""
-Matches tags like [yellow on black] but not escaped double brackets like [[]]
+
+_REGISTERED_UDFS: set[str] = set()
+"""The scalar UDFs registered with Arrow so far, by name. Registering a name that is
+already taken raises — and drops a reference to the function registered under it, so
+that pyarrow segfaults a couple of calls later — so each name is registered once."""
+
+
+def _register_udf(
+    name: str,
+    func: Callable[..., Any],
+    in_type: pa.DataType,
+    out_type: pa.DataType,
+    summary: str,
+) -> str:
+    """Register `func` as an Arrow scalar UDF of one array, if it is not registered."""
+    if name not in _REGISTERED_UDFS:
+        with suppress(pal.ArrowKeyError):  # registered by someone else
+            pc.register_scalar_function(
+                func,
+                function_name=name,
+                function_doc={"summary": summary, "description": summary},
+                in_types={"arr": in_type},
+                out_type=out_type,
+            )
+        _REGISTERED_UDFS.add(name)
+    return name
+
+
+_MARKUP_PATTERN = r"\[[a-z#/@][^\[]*\]|\\\["
+"""A superset of the values rich renders as something other than themselves.
+
+`rich.markup.render` returns a value unchanged unless it contains a tag — the first
+branch, `rich.markup.RE_TAGS` with its lazy quantifier made greedy, which does not
+change whether it matches — or a `\\[` escape, which it unescapes to `[`. Matching
+more than that only costs a measurement; matching less measures a value wrong, so
+this has to stay wider than whatever rich does.
 """
 
 
-def _measure_width(value: Any) -> int:
+def _measure_cells(arr: pa.Array, render_markup: bool) -> pa._PandasConvertible:
+    """The width, in cells, of every string in `arr`. Called through the UDFs below.
+
+    An ASCII character is one byte and one cell, so a value with as many bytes as it has
+    characters — the common case — is measured by Arrow alone and never touches Python.
+    Anything else has to be measured value by value, since a character can occupy two
+    cells (CJK, many emoji) or none (a combining mark), and markup renders at a width
+    its source says nothing about (`[dim]a[/]` is one cell, `[[red]]` two). Rich decides
+    what markup means, rather than a regex here approximating it: the whole value goes
+    to `measure_width`, which renders it exactly as the widget will. `measure_width`
+    (and rich with it) is imported at the first column that needs it, never for an
+    all-ASCII one that renders literally.
+    """
+    lengths = pc.utf8_length(arr)
+    # counting bytes is the cheap ASCII test: binary_length is offset arithmetic,
+    # while scanning for non-ASCII bytes (string_is_ascii) costs several times more
+    # than counting the characters does
+    byte_lengths = pc.binary_length(arr)
+    needs_measuring = pc.not_equal(byte_lengths, lengths)
+    if render_markup:
+        # markup renders at a width its source says nothing about, so anything that
+        # could be markup goes to rich. Testing for "[" first keeps the regex off
+        # the columns that have no brackets at all, which is most of them.
+        if pc.any(pc.match_substring(arr, pattern="["), min_count=0).as_py():
+            needs_measuring = pc.or_(
+                needs_measuring, pc.match_substring_regex(arr, pattern=_MARKUP_PATTERN)
+            )
+    needs_measuring = needs_measuring.fill_null(False)
+    if not pc.any(needs_measuring, min_count=0).as_py():
+        return lengths
+
+    # only the values Arrow cannot measure have to be measured in Python, and only
+    # once each: Arrow maps the distinct measurements back over the rows. The rest
+    # are as wide as the character count Arrow already has.
+    values = arr.filter(needs_measuring)
+    distinct = pc.unique(values)
+    return pc.replace_with_mask(
+        lengths,
+        needs_measuring,
+        pc.take(
+            pa.array(
+                [
+                    _measure_width(value, render_markup=render_markup)
+                    for value in distinct.to_pylist()
+                ],
+                type=lengths.type,
+            ),
+            pc.index_in(values, value_set=distinct),
+        ),
+    )
+
+
+def _cell_widths(_ctx: Any, arr: pa.Array) -> pa._PandasConvertible:
+    """Measure `arr` as the widget renders markup. Registered by `_measure_strings`."""
+    return _measure_cells(arr, render_markup=True)
+
+
+def _cell_widths_no_markup(_ctx: Any, arr: pa.Array) -> pa._PandasConvertible:
+    """Measure `arr` as the widget renders it literally. See `_measure_strings`.
+
+    A module-level function rather than a closure over the flag: a UDF is registered
+    under its name for the life of the process, so both variants have to be values
+    that outlive the call that registers them.
+    """
+    return _measure_cells(arr, render_markup=False)
+
+
+def _measure_strings(arr: pa._PandasConvertible, render_markup: bool) -> int:
+    """The width, in cells, of the widest string in `arr`, for column_content_widths.
+
+    Registers the matching `_cell_widths*` variant as a scalar UDF for the array's
+    type on first use, so that Arrow applies it a chunk at a time, and takes the
+    widest result.
+    """
+    udf_name = _register_udf(
+        f"tfdt_cell_width_{'markup' if render_markup else 'literal'}_{arr.type}",
+        _cell_widths if render_markup else _cell_widths_no_markup,
+        in_type=arr.type,
+        # the width of a large_string can overflow an int32, as its length can
+        out_type=pa.int64() if arr.type == pa.large_string() else pa.int32(),
+        summary="rendered width, in terminal cells",
+    )
+    try:
+        width: int = pc.max(pc.call_function(udf_name, [arr]).fill_null(0)).as_py()
+    except OverflowError:
+        width = 10
+    return width
+
+
+def _measure_width(value: Any, render_markup: bool = True) -> int:
     """The rendered width of one value, for column_content_widths.
 
-    rich is imported (and the Console built) on first call, so that importing
-    this module costs nothing for consumers that never measure anything.
+    The widget measures column labels the same way, through the same function;
+    it is imported here (and rich with it, and the Console it builds) on first
+    call, so that importing this module costs nothing for consumers that never
+    measure anything.
     """
-    global _console
-
     from textual_fastdatatable.format import measure_width
 
-    if _console is None:
-        from rich.console import Console
-
-        _console = Console()
-    return measure_width(value, _console)
+    return measure_width(value, render_markup=render_markup)
 
 
 def create_backend(
@@ -649,31 +762,18 @@ class ArrowBackend(DataTableBackend[pa.Table]):
             def py_str(_ctx: Any, arr: pa.Array) -> str | pa.Array | pa.ChunkedArray:
                 return pa.array([str(el) for el in arr], type=pa.string())
 
-            udf_name = f"tfdt_pystr_{arr.type}"
-            with suppress(pal.ArrowKeyError):  # already registered
-                pc.register_scalar_function(
-                    py_str,
-                    function_name=udf_name,
-                    function_doc={"summary": "str", "description": "built-in str"},
-                    in_types={"arr": arr.type},
-                    out_type=pa.string(),
-                )
-
+            udf_name = _register_udf(
+                f"tfdt_pystr_{arr.type}",
+                py_str,
+                in_type=arr.type,
+                out_type=pa.string(),
+                summary="built-in str",
+            )
             arr = pc.call_function(udf_name, [arr])
 
-        # remove rich markup text from width calculation
-        if self.render_markup:
-            arr = pc.replace_substring_regex(
-                arr, pattern=_RICH_MARKUP_TAG_PATTERN, replacement=""
-            )
-
-        # next, try to measure the UTF-encoded string length of each cell,
-        # then take the max
-        try:
-            width: int = pc.max(pc.utf8_length(arr.fill_null("")).fill_null(0)).as_py()
-        except OverflowError:
-            width = 10
-        return width
+        # next, measure the rendered width of each cell, then take the max. Markup
+        # is not stripped first: measuring parses it, the way the widget renders it.
+        return _measure_strings(arr.fill_null(""), render_markup=self.render_markup)
 
 
 if _HAS_POLARS:
@@ -890,12 +990,10 @@ if _HAS_POLARS:
                 strict=False,
             )
 
-            # remove rich markup text from width calculation
-            if self.render_markup:
-                arr = arr.str.replace_all(_RICH_MARKUP_TAG_PATTERN, "")
-            width = arr.fill_null("<null>").str.len_chars().max()
-            assert isinstance(width, int)
-            return width
+            # measured through Arrow, so that both backends measure the same way
+            return _measure_strings(
+                arr.fill_null("<null>").to_arrow(), render_markup=self.render_markup
+            )
 
         def sort(
             self, by: list[tuple[str, Literal["ascending", "descending"]]] | str

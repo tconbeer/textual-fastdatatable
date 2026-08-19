@@ -2,11 +2,82 @@ from __future__ import annotations
 
 import pytest
 
-from textual_fastdatatable.backend import DataTableBackend
+from textual_fastdatatable.backend import (
+    ArrowBackend,
+    DataTableBackend,
+    PolarsBackend,
+)
 
 
 def test_column_content_widths(backend: DataTableBackend) -> None:
     assert backend.column_content_widths == [1, 8, 6]
+
+
+@pytest.mark.parametrize(
+    "value,expected_width",
+    [
+        ("hello", 5),  # ascii: one cell per character
+        ("日本語", 6),  # three double-width characters
+        ("🙂x", 3),  # a double-width emoji
+        ("señor", 5),  # six characters, one of them a zero-width combining tilde
+        ("a\tb", 3),  # ASCII, tab included: Arrow's character count is its width
+        ("日\nbbbb", 4),  # a multi-line value is as wide as its widest line
+    ],
+)
+def test_column_content_widths_are_measured_in_cells(
+    backend_class: type[ArrowBackend] | type[PolarsBackend],
+    value: str,
+    expected_width: int,
+) -> None:
+    """A column is as wide as its strings render, not as many chars as they have."""
+    backend = backend_class.from_pydict({"one": [value, "a"]})
+
+    assert backend.column_content_widths == [expected_width]
+
+
+@pytest.mark.parametrize(
+    "value,markup_width,literal_width",
+    [
+        # rich renders the tags away; without markup they are just characters
+        ("[dim]日本[/]", 4, 12),
+        ("[red]abc[/]", 3, 11),
+        # rich is the authority on what markup means, not a regex approximating it:
+        # it renders "[[x]]" as "[]", and refuses "[/]x", which is escaped instead
+        ("日本[[x]]", 6, 9),
+        ("[[red]]", 2, 7),
+        ("[/]x", 4, 4),
+        # a value with a bracket but no tag in it renders as itself either way
+        ('{"a": [1, 2]}', 13, 13),
+        ("a[b", 3, 3),
+    ],
+)
+def test_column_content_widths_follow_render_markup(
+    backend_class: type[ArrowBackend] | type[PolarsBackend],
+    value: str,
+    markup_width: int,
+    literal_width: int,
+) -> None:
+    """A value is measured as it will be rendered: as markup, or literally."""
+    for render_markup, expected_width in ((True, markup_width), (False, literal_width)):
+        backend = backend_class.from_pydict({"one": [value, "a"]})
+        backend.render_markup = render_markup
+
+        assert backend.column_content_widths == [expected_width]
+
+
+def test_column_content_widths_are_repeatable(
+    backend_class: type[ArrowBackend] | type[PolarsBackend],
+) -> None:
+    """Regression test: measuring re-registered the UDF, which segfaulted pyarrow.
+
+    `pc.register_scalar_function` raises for a name that is taken, and drops a
+    reference to the function already registered under it, so the third call to that
+    function crashed the interpreter.
+    """
+    backend = backend_class.from_pydict({f"col {i}": ["日本語", "a"] for i in range(6)})
+
+    assert backend.column_content_widths == [6] * 6
+    assert backend.column_content_widths == [6] * 6
 
 
 def test_get_row_at(backend: DataTableBackend) -> None:

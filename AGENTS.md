@@ -76,11 +76,48 @@ reporting the full input — the widget shows both counts.
 `column_content_widths` is the hot path for first paint. Each backend computes it with
 vectorized column operations rather than per-cell Python (`_measure`): booleans and nulls
 are constants, numerics measure only min/max, temporals measure one non-null value, and
-everything else casts the whole column to string and takes `max(utf8_length)`. The
-per-value fallback is `backend._measure_width`, which owns the lazily built rich `Console`
-(see Conventions). The result
+everything else casts the whole column to string and takes the widest result of
+`_measure_strings`. That runs `_measure_cells` as an Arrow scalar UDF, which measures an
+array in cells rather than characters. Arrow measures the values it can by itself, and
+hands the rest to `backend._measure_width` — a lazy wrapper around
+`format.measure_width` (see Conventions), which is also the per-value path for
+non-strings — once per distinct value, mapped back over the rows by Arrow. Arrow can
+measure a value when:
+
+- it has as many bytes as characters, so it is all ASCII and one cell per character; and
+- with `render_markup`, it does not match `_MARKUP_PATTERN`, so rich will render it
+  unchanged. **That pattern must stay a superset of what rich treats as markup**
+  (`rich.markup.RE_TAGS`, plus the `\[` escape `render` unescapes) — matching too much
+  only costs a measurement, matching too little measures a value wrong. Markup is never
+  stripped before measuring: rich decides what it means, by rendering it. A cheap "is
+  there a `[` at all" test runs first, so a column with no brackets never pays for the
+  regex.
+
+Because `measure_width` renders the value, it has to be told whether the widget renders
+markup; `_measure_cells` is registered as two UDFs per type, `_cell_widths` and
+`_cell_widths_no_markup`, since a UDF is registered under its name for the life of the
+process. The result
 is cached on the backend and cleared by `_reset_content_widths()` on mutation. The Arrow
-path registers a PyArrow scalar UDF as a fallback for types Arrow can't cast to string.
+path registers another scalar UDF as a fallback for types Arrow can't cast to string.
+
+Every UDF is registered through `_register_udf`, which registers a name at most once:
+`pc.register_scalar_function` raises for a name that is taken **and drops a reference to
+the function already registered under it**, so re-registering segfaults pyarrow a couple
+of calls later. `tests/unit_tests/test_backends.py::test_column_content_widths_are_repeatable`
+guards this.
+
+`format.measure_width` is the one place a width is measured: it formats the value with
+`cell_formatter` and measures the result in cells against a console. The widget passes
+the app's, via `DataTable._measure`, so a column is never wider than the screen; callers
+with no app (the backend, and the widget before it mounts) get the console this module
+builds lazily, which is `MAX_MEASURE_WIDTH` wide, so nothing caps those measurements
+(and whose `ConsoleOptions` are cached with it: `Console.options` rebuilds them on every
+access, about half the cost of measuring a short value). `render_markup` must match the
+widget's, or `[dim]a[/]` measures one cell where eleven render.
+Widths are never counted with `len()` — a character can occupy two cells or none. The
+widget measures column labels this way too and folds the result into
+`Column.content_width` in `ordered_columns` and `add_column`, so `Column` itself only
+adds padding.
 
 `column.Column` turns those content widths into render widths (`+ CELL_X_PADDING`,
 clamped by `max_column_content_width` when set). It also detects ID-ish column names by
@@ -128,9 +165,11 @@ message on `ctrl+c`/`super+c` — this requires the host app to be built with
   - `pyarrow.parquet` is imported inside `ArrowBackend.from_parquet`, its only use site.
     `pyarrow.compute`/`types`/`lib` stay at module scope; they're used in the hot path.
     Any module-scope `pq.` use undoes this.
-  - `backend._measure_width` imports rich and `format.measure_width` on first call, and
-    builds its module-level `Console` there. Backends must not import either at module
-    scope, or construct a `Console` in `__init__`.
+  - `backend._measure_width` imports `format.measure_width` (and rich with it, plus the
+    `Console` that module builds on its first measurement) on first call. Backends must
+    not import rich or `format` at module scope, or construct a `Console` in `__init__`.
+    A string column that is all ASCII never calls it, so an ASCII table never pays for
+    rich at all.
 
   `tests/unit_tests/test_lazy_imports.py` asserts all three, in a subprocess. To check by
   hand (all `False`; the import costs ~225 modules on 3.10 against the required deps, 450

@@ -18,6 +18,9 @@ class Column:
     label: Text
     width: int = 0
     content_width: int = 0
+    """The width, in cells, of the widest thing this column has to render, its label
+    included. The DataTable measures that with `format.measure_width`, the same
+    function the backend measures data with."""
     auto_width: bool = False
     max_content_width: int | None = None
 
@@ -29,12 +32,9 @@ class Column:
         """Width in cells, required to render a column."""
         # +2 is to account for space padding either side of the cell
         if self.auto_width and self.max_content_width is not None:
-            return (
-                min(max(len(self.label), self.content_width), self.max_content_width)
-                + CELL_X_PADDING
-            )
+            return min(self.content_width, self.max_content_width) + CELL_X_PADDING
         elif self.auto_width:
-            return max(len(self.label), self.content_width) + CELL_X_PADDING
+            return self.content_width + CELL_X_PADDING
         else:
             return self.width + CELL_X_PADDING
 

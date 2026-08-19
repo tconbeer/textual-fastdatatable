@@ -32,13 +32,14 @@ from itertools import chain, zip_longest
 from typing import Any, ClassVar, Literal, NamedTuple
 
 import rich.repr
-from rich.console import RenderableType
+from rich.console import Console, RenderableType
 from rich.padding import Padding
 from rich.pretty import Pretty
 from rich.segment import Segment
 from rich.style import Style
 from rich.text import Text, TextType
 from textual import events, on
+from textual._context import NoActiveAppError
 from textual._segment_tools import line_crop
 from textual.binding import Binding, BindingType
 from textual.cache import LRUCache
@@ -49,7 +50,6 @@ from textual.dom import NoScreen
 from textual.geometry import Region, Size, Spacing, clamp
 from textual.message import Message
 from textual.reactive import Reactive
-from textual.render import measure
 from textual.renderables.styled import Styled
 from textual.scroll_view import ScrollView
 from textual.strip import Strip
@@ -1145,6 +1145,20 @@ class DataTable(ScrollView, can_focus=True):
         """The render width of the column containing row labels"""
         return self._label_column.render_width if self._should_render_row_labels else 0
 
+    def _measure(self, obj: object) -> int:
+        """The width, in cells, needed to render `obj` in this table.
+
+        Widths belong to the widget, not to `Column`: they have to be measured (see
+        `format.measure_width`), against the console that will render them, so that a
+        column is never wider than the app. `ordered_columns` measures labels before
+        this widget is mounted, so borrow the app's console only if there is one.
+        """
+        try:
+            console: Console | None = self.app.console
+        except NoActiveAppError:
+            console = None
+        return measure_width(obj, console)
+
     def _update_dimensions(self, new_rows: Iterable[int]) -> None:
         """Called to recalculate the virtual (scrollable) size.
 
@@ -1154,7 +1168,6 @@ class DataTable(ScrollView, can_focus=True):
         Args:
             new_rows: The new rows that will affect the `DataTable` dimensions.
         """
-        console = self.app.console
         auto_height_rows: list[tuple[int, int, list[RenderableType]]] = []
         for row_index in new_rows:
             # The row could have been removed before on_idle was called, so we
@@ -1170,7 +1183,7 @@ class DataTable(ScrollView, can_focus=True):
             #     self._labelled_row_exists = True
 
             row_label, cells_in_row = self._get_row_renderables(row_index)
-            label_content_width = measure(console, row_label, 1) if row_label else 0
+            label_content_width = self._measure(row_label) if row_label else 0
             self._label_column.content_width = max(
                 self._label_column.content_width, label_content_width
             )
@@ -1178,7 +1191,7 @@ class DataTable(ScrollView, can_focus=True):
             for column, renderable in zip(
                 self.ordered_columns, cells_in_row, strict=False
             ):
-                content_width = measure(console, renderable, 1)
+                content_width = self._measure(renderable)
                 column.content_width = max(column.content_width, content_width)
 
             # TODO: support row HEIGHT > 1
@@ -1380,24 +1393,14 @@ class DataTable(ScrollView, can_focus=True):
 
         label = Text.from_markup(label) if isinstance(label, str) else label
 
-        # TODO: dedupe with column.py
-        label_width = measure(self.app.console, label, 1)
-        default_width = (
-            measure(self.app.console, default, 1) if default is not None else 0
-        )
+        default_width = self._measure(default) if default is not None else 0
+        # the header has to fit, too, so the label is measured and folded in here,
+        # the same way `ordered_columns` does it
+        content_width = max(self._measure(label), default_width)
         if width is None:
-            col = Column(
-                label,
-                label_width,
-                content_width=max(label_width, default_width),
-                auto_width=True,
-            )
+            col = Column(label, content_width=content_width, auto_width=True)
         else:
-            col = Column(
-                label,
-                width,
-                content_width=max(label_width, default_width),
-            )
+            col = Column(label, width, content_width=content_width)
 
         cols.append(col)
         self._ordered_columns = cols
@@ -1722,16 +1725,22 @@ class DataTable(ScrollView, can_focus=True):
         else:
             column_content_widths = [0] * len(labels)
 
+        text_labels = [
+            Text.from_markup(label) if isinstance(label, str) else label
+            for label in labels
+        ]
         self._ordered_columns = [
             Column(
-                label=Text.from_markup(label) if isinstance(label, str) else label,
+                label=label,
                 width=width if width is not None else 0,
-                content_width=content_width,
+                # the header has to fit, too, so the label is measured (never
+                # counted: see format.measure_width) and folded in here
+                content_width=max(self._measure(label), content_width),
                 auto_width=True if width is None or width == 0 else False,
                 max_content_width=self.max_column_content_width,
             )
             for label, width, content_width in zip(
-                labels, widths, column_content_widths, strict=False
+                text_labels, widths, column_content_widths, strict=False
             )
         ]
         return self._ordered_columns
@@ -2584,7 +2593,7 @@ class DataTable(ScrollView, can_focus=True):
                 raw_value = self.get_cell_at(coordinate)
             if raw_value is None:
                 raw_value = self.null_rep
-            measured_width = measure_width(raw_value, self.app.console)
+            measured_width = self._measure(raw_value)
             if (
                 self.max_column_content_width is not None
                 and measured_width > self.max_column_content_width

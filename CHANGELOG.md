@@ -11,6 +11,8 @@ All notable changes to this project will be documented in this file.
   Textual to clear and re-show it indefinitely.
 - The backend now measures column widths based on whether or not strings will be
   rendered as Rich markup ([#171](https://github.com/tconbeer/textual-fastdatatable/pull/171)).
+- String columns are now measured in terminal cells instead of counted in characters ([#144](https://github.com/tconbeer/textual-fastdatatable/issues/144)). 
+- Column labels are now measured the same way cell values are ([#144](https://github.com/tconbeer/textual-fastdatatable/issues/144)).
 
 ## [0.17.1] - 2026-08-10
 
