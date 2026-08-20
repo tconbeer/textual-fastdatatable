@@ -93,6 +93,19 @@ measure a value when:
   there a `[` at all" test runs first, so a column with no brackets never pays for the
   regex.
 
+A row is one line tall, so a multi-line value renders — and is measured — as its first
+line plus `format.MULTILINE_MARKER`. `_measure_cells` gets that width from the first
+break's position (`pc.find_substring`, which for an all-ASCII value *is* a width), but
+runs the kernel only for a column `_line_breaks_present` found a break in: the byte scan
+costs ~4ms per million values against the kernel's ~30ms, and almost no column has a
+break. `backend.LINE_BREAKS` and `_MARKER_WIDTH` restate `format`, which `backend`
+cannot import; `test_backends.test_line_breaks_match_the_formatters` holds them in step.
+
+When a cell renders, `_render_cell` passes the room it has as `cell_formatter`'s
+`max_width`, and a clipped value is cropped to leave the marker its cells. Without that
+reservation the marker — being the tail of the line — is the first thing rich's overflow
+drops in a column capped by `max_column_content_width`. Measuring passes no `max_width`.
+
 Because `measure_width` renders the value, it has to be told whether the widget renders
 markup; `_measure_cells` is registered as two UDFs per type, `_cell_widths` and
 `_cell_widths_no_markup`, since a UDF is registered under its name for the life of the

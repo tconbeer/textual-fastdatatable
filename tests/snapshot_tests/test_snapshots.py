@@ -25,6 +25,10 @@ def test_datatable_no_render_markup(snap_compare: Callable) -> None:
     assert snap_compare(SNAPSHOT_APPS_DIR / "data_table_no_render_markup.py")
 
 
+def test_datatable_multiline_values(snap_compare: Callable) -> None:
+    assert snap_compare(SNAPSHOT_APPS_DIR / "data_table_multiline_values.py")
+
+
 def test_datatable_null_mixed_cols(snap_compare: Callable) -> None:
     assert snap_compare(SNAPSHOT_APPS_DIR / "data_table_null_mixed_cols.py")
 

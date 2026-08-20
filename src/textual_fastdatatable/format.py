@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 from itertools import chain
@@ -19,6 +20,24 @@ MAX_MEASURE_WIDTH = 2**16
 """The width of the fallback console: with no app to measure against, nothing is known
 about the screen a value will be rendered on, so nothing caps the measurement."""
 
+MULTILINE_MARKER = "…⏎"
+"""Ends a cell whose value has lines below the one the row can show.
+
+Not a bare `…`: rich ends a value clipped to the column's *width* with one too, so
+the return symbol is what says the rest is below rather than to the right."""
+
+MULTILINE_MARKER_STYLE = "dim italic"
+"""Styled so the marker reads as a marker, not as the end of the value."""
+
+MULTILINE_MARKER_WIDTH = 2
+"""Cells `MULTILINE_MARKER` occupies. Checked by test_format."""
+
+LINE_BREAK_PROG = re.compile(r"[\r\n]")
+"""Where a value's first line ends.
+
+Only these two: rich splits lines on `\n`, and a lone `\r` would drive the cursor
+back over the row."""
+
 _console: Console | None = None
 """The console to measure against when the caller has no app to borrow one from (the
 backend never does). Built on the first measurement, so consumers that never measure
@@ -28,6 +47,49 @@ _console_options: ConsoleOptions | None = None
 """The render options of `_console`, built with it. `Console.options` builds a fresh
 ConsoleOptions on every access, which is about half the cost of measuring a short
 value; this console has a fixed width and is never resized, so its options are too."""
+
+
+def has_line_break(obj: object) -> bool:
+    """Whether a cell can only show part of this value.
+
+    Only strings and `Text` ever can; every other type `cell_formatter` handles
+    renders on one line by construction.
+    """
+    if isinstance(obj, Text):
+        obj = obj.plain
+    return isinstance(obj, str) and LINE_BREAK_PROG.search(obj) is not None
+
+
+def _split_first_line(value: str, truncate: bool) -> tuple[str, bool]:
+    """`value` up to its first line break, and whether one was found."""
+    match = LINE_BREAK_PROG.search(value) if truncate else None
+    if match is None:
+        return value, False
+    return value[: match.start()], True
+
+
+def _mark_truncated(text: Text, max_width: int | None) -> Text:
+    """Append the marker to a value's first line, in place, within `max_width`.
+
+    The marker is the tail of the line, so left to compete for `max_width` it is the
+    first thing rich clips off. Cropping the value to make room keeps it. Cropping,
+    not ellipsizing: the marker opens with an ellipsis already.
+    """
+    if max_width is not None:
+        text.truncate(max(max_width - MULTILINE_MARKER_WIDTH, 0), overflow="crop")
+    text.append(MULTILINE_MARKER, style=MULTILINE_MARKER_STYLE)
+    return text
+
+
+def truncate_to_first_line(text: Text, max_width: int | None = None) -> Text:
+    """`text` clipped to its first line and marked, or `text` itself if it is one line.
+
+    Slices rather than mutates, since the caller owns `text`.
+    """
+    match = LINE_BREAK_PROG.search(text.plain)
+    if match is None:
+        return text
+    return _mark_truncated(text[: match.start()], max_width)
 
 
 def measure_width(
@@ -43,6 +105,8 @@ def measure_width(
 
     render_markup must match the widget's, so that a string is measured as it will
     be rendered: `[dim]a[/]` is one cell as markup and eleven cells literally.
+
+    A multi-line value measures its first line plus the marker, all a row renders.
     """
     global _console, _console_options
     options = None
@@ -62,7 +126,12 @@ def measure_width(
 
 
 def cell_formatter(
-    obj: object, null_rep: Text, col: Column | None = None, render_markup: bool = True
+    obj: object,
+    null_rep: Text,
+    col: Column | None = None,
+    render_markup: bool = True,
+    truncate_multiline: bool = True,
+    max_width: int | None = None,
 ) -> RenderableType:
     """Convert a cell into a Rich renderable for display.
 
@@ -71,6 +140,12 @@ def cell_formatter(
     Args:
         obj: Data for a cell.
         col: Column that the cell came from (used to compute width).
+        render_markup: Parse strings as console markup, instead of literally.
+        truncate_multiline: Clip a multi-line value to its first line plus
+            `MULTILINE_MARKER`. False only for the tooltip, which has room for
+            every line.
+        max_width: Cells the value will be rendered into. Only a clipped value
+            reads it, to reserve room for the marker. None when measuring.
 
     Returns:
         A renderable to be displayed which represents the data.
@@ -79,14 +154,19 @@ def cell_formatter(
         return Align(null_rep, align="center")
 
     elif isinstance(obj, str) and render_markup:
+        head, truncated = _split_first_line(obj, truncate_multiline)
         try:
-            rich_text: Text | str = Text.from_markup(obj)
+            rich_text = Text.from_markup(head)
         except MarkupError:
-            rich_text = escape(obj)
-        return rich_text
+            # not markup after all, so fall through to rendering it literally
+            return _mark_truncated(Text(head), max_width) if truncated else escape(head)
+        return _mark_truncated(rich_text, max_width) if truncated else rich_text
 
     elif isinstance(obj, str):
-        return escape(obj)
+        head, truncated = _split_first_line(obj, truncate_multiline)
+        # `Text` renders literally, so it needs no escaping; a marked value has to
+        # be one anyway, to carry the marker's style
+        return _mark_truncated(Text(head), max_width) if truncated else escape(head)
 
     elif isinstance(obj, bool):
         return Align(
@@ -145,6 +225,9 @@ def cell_formatter(
         if len(data) > 32:
             preview = f"{preview} (+{len(data) - 32} bytes)"
         return escape(preview)
+
+    elif isinstance(obj, Text):
+        return truncate_to_first_line(obj, max_width) if truncate_multiline else obj
 
     elif not is_renderable(obj):
         return str(obj)

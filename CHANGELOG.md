@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+- A multi-line cell now ends in a dim `…⏎`, so a value with lines below the first no
+  longer reads as the one line it shows
+  ([tconbeer/harlequin#635](https://github.com/tconbeer/harlequin/issues/635),
+  [tconbeer/harlequin#771](https://github.com/tconbeer/harlequin/issues/771)).
+- Multi-line cells now get a tooltip.
+- Multi-line values are now measured for column width as they are rendered.
+
 ## [0.18.0] - 2026-08-19
 
 - Fixes the flickering tooltip reported in

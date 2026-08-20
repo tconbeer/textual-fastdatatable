@@ -58,11 +58,13 @@ from textual.widgets import Tooltip
 from typing_extensions import Self
 
 from textual_fastdatatable.backend import DataTableBackend, create_backend
-from textual_fastdatatable.column import Column
+from textual_fastdatatable.column import CELL_X_PADDING, Column
 from textual_fastdatatable.format import (
     cell_formatter,
+    has_line_break,
     measure_width,
     truncate_renderable,
+    truncate_to_first_line,
 )
 
 CursorType = Literal["cell", "range", "row", "column", "none"]
@@ -1783,7 +1785,8 @@ class DataTable(ScrollView, can_focus=True):
         if row_index == -1:
             header_row: list[RenderableType] = [
                 # TODO: make this pluggable so we can override the native labels
-                column.label
+                # truncated like a cell, so it renders at the width it was measured
+                truncate_to_first_line(column.label)
                 for column in ordered_columns
             ]
             # This is the cell where header and row labels intersect
@@ -1810,7 +1813,7 @@ class DataTable(ScrollView, can_focus=True):
         return RowRenderables(label, formatted_row_cells)
 
     def _get_cell_renderable(
-        self, row_index: int, column_index: int
+        self, row_index: int, column_index: int, max_width: int | None = None
     ) -> RenderableType | Text:
         """Get renderables for the cell currently at the given row index,
         column index tuple. The renderable
@@ -1819,12 +1822,16 @@ class DataTable(ScrollView, can_focus=True):
         Args:
             row_index: Index of the row.
             column_index: Index of the column.
+            max_width: Cells the value will be rendered into, so a multi-line
+                value can reserve room for its marker. None when measuring.
 
         Returns:
             A RenderableType (or Text) containing the the rendered cell.
         """
         if row_index == -1:
-            return self.ordered_columns[column_index].label
+            return truncate_to_first_line(
+                self.ordered_columns[column_index].label, max_width
+            )
 
         datum = self.get_cell_at(Coordinate(row=row_index, column=column_index))
         return cell_formatter(
@@ -1832,6 +1839,7 @@ class DataTable(ScrollView, can_focus=True):
             null_rep=self.null_rep,
             col=self.ordered_columns[column_index],
             render_markup=self.render_markup,
+            max_width=max_width,
         )
 
     def _render_cell(
@@ -1887,7 +1895,9 @@ class DataTable(ScrollView, can_focus=True):
                 cell = row_label if row_label is not None else ""
             else:
                 cell = self._get_cell_renderable(
-                    row_index=row_index, column_index=column_index
+                    row_index=row_index,
+                    column_index=column_index,
+                    max_width=width - CELL_X_PADDING,  # `Padding` claims the rest
                 )
 
             component_style, post_style = self._get_styles_to_render_cell(
@@ -2594,10 +2604,16 @@ class DataTable(ScrollView, can_focus=True):
             if raw_value is None:
                 raw_value = self.null_rep
             measured_width = self._measure(raw_value)
+            # a multi-line value is clipped by height, not width, so it needs a
+            # tooltip however narrow its first line is
             if (
-                self.max_column_content_width is not None
-                and measured_width > self.max_column_content_width
-            ) or (measured_width > column.render_width):
+                has_line_break(raw_value)
+                or (
+                    self.max_column_content_width is not None
+                    and measured_width > self.max_column_content_width
+                )
+                or measured_width > column.render_width
+            ):
                 if isinstance(raw_value, str):
                     # a value that fits in the tooltip can never contain more
                     # characters than the tooltip has cells; slicing first keeps
@@ -2615,6 +2631,7 @@ class DataTable(ScrollView, can_focus=True):
                         null_rep=self.null_rep,
                         col=column,
                         render_markup=self.render_markup,
+                        truncate_multiline=False,  # the tooltip shows every line
                     )
                 else:
                     renderable = Pretty(raw_value)

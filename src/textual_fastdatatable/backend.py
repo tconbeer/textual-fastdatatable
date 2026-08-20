@@ -69,12 +69,27 @@ more than that only costs a measurement; matching less measures a value wrong, s
 this has to stay wider than whatever rich does.
 """
 
+LINE_BREAKS = frozenset("\r\n")
+"""Characters that end a value's first line. Restates `format.LINE_BREAK_PROG`,
+which this module cannot import (see `_measure_width`); the test below holds them
+in step."""
+
+_MARKER_WIDTH = 2
+"""Cells `format.MULTILINE_MARKER` takes. Restates `format.MULTILINE_MARKER_WIDTH`.
+
+Both are checked by `test_backends.test_line_breaks_match_the_formatters`."""
+
+_SCAN_BLOCK_SIZE = 1 << 20
+"""Bytes `_line_breaks_present` copies at a time, so scanning a large column does
+not double its memory."""
+
 
 def _measure_cells(arr: pa.Array, render_markup: bool) -> pa._PandasConvertible:
     """The width, in cells, of every string in `arr`. Called through the UDFs below.
 
-    An ASCII character is one byte and one cell, so a value with as many bytes as it has
-    characters — the common case — is measured by Arrow alone and never touches Python.
+    An ASCII character is one byte and one cell, so a single-line value with as many
+    bytes as it has characters — the common case — is measured by Arrow alone and never
+    touches Python.
     Anything else has to be measured value by value, since a character can occupy two
     cells (CJK, many emoji) or none (a combining mark), and markup renders at a width
     its source says nothing about (`[dim]a[/]` is one cell, `[[red]]` two). Rich decides
@@ -89,6 +104,28 @@ def _measure_cells(arr: pa.Array, render_markup: bool) -> pa._PandasConvertible:
     # than counting the characters does
     byte_lengths = pc.binary_length(arr)
     needs_measuring = pc.not_equal(byte_lengths, lengths)
+    # a row is one line tall, so a multi-line value renders as its first line plus the
+    # marker. The first break's position IS that first line's width, for the all-ASCII
+    # values measured here -- one byte and one cell per character.
+    breaks_in_column = _line_breaks_present(arr)  # "\n" and/or "\r", usually neither
+    if breaks_in_column:
+        # start at `lengths`, the position that leaves an unbroken value's width alone
+        first_break_index = lengths
+        for line_break in breaks_in_column:
+            index = pc.find_substring(arr, pattern=line_break)  # -1 where absent
+            first_break_index = pc.if_else(
+                pc.greater_equal(index, 0),
+                # min, so "a\r\nb" ends at the \r rather than at whichever ran last
+                pc.min_element_wise(index, first_break_index),
+                first_break_index,
+            )
+        # typed, so adding it does not widen an int32 count to an int64
+        marker_width = pa.scalar(_MARKER_WIDTH, type=lengths.type)
+        lengths = pc.if_else(
+            pc.less(first_break_index, lengths),
+            pc.add(first_break_index, marker_width),
+            lengths,
+        )
     if render_markup:
         # markup renders at a width its source says nothing about, so anything that
         # could be markup goes to rich. Testing for "[" first keeps the regex off
@@ -120,6 +157,33 @@ def _measure_cells(arr: pa.Array, render_markup: bool) -> pa._PandasConvertible:
             pc.index_in(values, value_set=distinct),
         ),
     )
+
+
+def _line_breaks_present(arr: pa.Array) -> frozenset[str]:
+    """Which of `LINE_BREAKS` occur in `arr` -- empty for almost every column.
+
+    A cheap gate, not an answer: it over-reports rather than under-reports, so use it
+    to skip work, never to conclude a value contains a break. Locating breaks per row
+    costs ~30ms per million values (`pc.find_substring`, once per break kind); reading
+    the same characters as bytes costs ~4ms.
+    """
+    # a string array is (validity, offsets, characters), and only validity is ever
+    # absent -- an empty, all-null or sliced array still carries a character buffer
+    characters = arr.buffers()[2]
+    assert characters is not None, f"{arr.type} is not a string array"
+
+    found: set[str] = set()
+    for start in range(0, characters.size, _SCAN_BLOCK_SIZE):
+        # Buffer.slice, unlike Array.slice, refuses a length past the end. The scan
+        # covers the whole buffer, so a sliced array sees its neighbours' characters
+        # too -- one of the ways this over-reports.
+        length = min(_SCAN_BLOCK_SIZE, characters.size - start)
+        block = characters.slice(start, length).to_pybytes()
+        # the breaks are ASCII, so no multi-byte character can contain their bytes
+        found.update(char for char in LINE_BREAKS - found if ord(char) in block)
+        if found == LINE_BREAKS:
+            break
+    return frozenset(found)
 
 
 def _cell_widths(_ctx: Any, arr: pa.Array) -> pa._PandasConvertible:
