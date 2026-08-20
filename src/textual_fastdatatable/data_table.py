@@ -1785,8 +1785,7 @@ class DataTable(ScrollView, can_focus=True):
         if row_index == -1:
             header_row: list[RenderableType] = [
                 # TODO: make this pluggable so we can override the native labels
-                # a label is truncated the same way a cell is, so that it is
-                # measured and rendered at the same width
+                # truncated like a cell, so it renders at the width it was measured
                 truncate_to_first_line(column.label)
                 for column in ordered_columns
             ]
@@ -1823,9 +1822,8 @@ class DataTable(ScrollView, can_focus=True):
         Args:
             row_index: Index of the row.
             column_index: Index of the column.
-            max_width: The cells the value will be rendered into, so that a
-                multi-line value can reserve room for its truncation marker.
-                None when the caller is measuring rather than rendering.
+            max_width: Cells the value will be rendered into, so a multi-line
+                value can reserve room for its marker. None when measuring.
 
         Returns:
             A RenderableType (or Text) containing the the rendered cell.
@@ -1899,8 +1897,7 @@ class DataTable(ScrollView, can_focus=True):
                 cell = self._get_cell_renderable(
                     row_index=row_index,
                     column_index=column_index,
-                    # the padding `Padding` adds below is not the value's to use
-                    max_width=width - CELL_X_PADDING,
+                    max_width=width - CELL_X_PADDING,  # `Padding` claims the rest
                 )
 
             component_style, post_style = self._get_styles_to_render_cell(
@@ -2607,9 +2604,8 @@ class DataTable(ScrollView, can_focus=True):
             if raw_value is None:
                 raw_value = self.null_rep
             measured_width = self._measure(raw_value)
-            # a multi-line value is truncated by height rather than by width, so
-            # it needs a tooltip however narrow its first line is: that first
-            # line plus a marker is all the cell shows of it
+            # a multi-line value is clipped by height, not width, so it needs a
+            # tooltip however narrow its first line is
             if (
                 has_line_break(raw_value)
                 or (
@@ -2635,8 +2631,7 @@ class DataTable(ScrollView, can_focus=True):
                         null_rep=self.null_rep,
                         col=column,
                         render_markup=self.render_markup,
-                        # the tooltip is the place the hidden lines are shown
-                        truncate_multiline=False,
+                        truncate_multiline=False,  # the tooltip shows every line
                     )
                 else:
                     renderable = Pretty(raw_value)

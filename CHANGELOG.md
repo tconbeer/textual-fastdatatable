@@ -4,19 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
-- A cell whose value spans more than one line now ends in a dim `…⏎`, instead of showing
-  its first line as if that were the whole value. A value that *starts* with a line
-  break no longer looks empty
+- A multi-line cell now ends in a dim `…⏎`, so a value with lines below the first no
+  longer reads as the one line it shows
   ([tconbeer/harlequin#635](https://github.com/tconbeer/harlequin/issues/635),
-  [tconbeer/harlequin#771](https://github.com/tconbeer/harlequin/issues/771)). The
-  return symbol distinguishes it from the plain `…` that marks a value clipped to the
-  column's width; the marker is reserved out of that width, so it stays visible even
-  when the first line alone overflows the column.
-- Multi-line cells now get a tooltip showing the lines the cell has no room for,
-  however narrow their first line is.
-- Multi-line values are now measured for column width as they are rendered — their
-  first line, plus the marker — so a column is no longer widened by lines it never
-  shows.
+  [tconbeer/harlequin#771](https://github.com/tconbeer/harlequin/issues/771)).
+- Multi-line cells now get a tooltip.
+- Multi-line values are now measured for column width as they are rendered.
 
 ## [0.18.0] - 2026-08-19
 

@@ -216,3 +216,19 @@ def test_a_single_line_value_is_never_clipped_by_the_marker_reservation() -> Non
     result = cell_formatter("a long single line", null_rep=NULL, max_width=4)
 
     assert _plain(result) == "a long single line"
+
+
+def test_marker_width_matches_the_marker() -> None:
+    """`MULTILINE_MARKER_WIDTH` is written down, not measured; keep it honest."""
+    assert measure_width(Text(MULTILINE_MARKER)) == MULTILINE_MARKER_WIDTH
+
+
+def test_a_marked_value_is_not_double_escaped() -> None:
+    """A marked value is `Text`, which renders literally without being escaped.
+
+    Escaping it first would put the escape's own backslash on the screen.
+    """
+    result = cell_formatter("a [red]b\nc", null_rep=NULL, render_markup=False)
+
+    assert _plain(result) == f"a [red]b{MULTILINE_MARKER}"
+    assert "\\" not in _plain(result)

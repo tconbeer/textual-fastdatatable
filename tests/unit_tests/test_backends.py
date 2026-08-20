@@ -71,11 +71,9 @@ def test_column_content_widths_follow_render_markup(
 
 
 def test_line_breaks_match_the_formatters() -> None:
-    """`backend` cannot import `format`, so its copy of the rules is checked here.
+    """`backend` restates `format`'s rules because it cannot import it.
 
-    `backend.LINE_BREAKS` has to be every break `format` clips a value at, and
-    `_MARKER_WIDTH` the width of the marker `format` appends when it does; either
-    one out of step measures every multi-line value wrong.
+    Either constant out of step measures every multi-line value wrong.
     """
     from textual_fastdatatable.backend import _MARKER_WIDTH
     from textual_fastdatatable.format import (
@@ -120,10 +118,10 @@ def test_multiline_widths_are_measured_over_a_whole_column(
 
 
 def test_line_breaks_are_found_past_the_first_scanned_block() -> None:
-    """The byte scan reads a megabyte at a time; a break in a later block counts."""
+    """The byte scan reads a block at a time; a break in a later block still counts."""
     import pyarrow as pa
 
-    from textual_fastdatatable.backend import _SCAN_BLOCK_SIZE, _line_breaks_in
+    from textual_fastdatatable.backend import _SCAN_BLOCK_SIZE, _line_breaks_present
 
     def string_array(values: list[str]) -> pa.Array:
         array = pa.array(values, type=pa.string())
@@ -133,9 +131,9 @@ def test_line_breaks_are_found_past_the_first_scanned_block() -> None:
     filler = "a" * 1_000
     rows = [filler] * (_SCAN_BLOCK_SIZE // len(filler) + 10)
 
-    assert _line_breaks_in(string_array(rows)) == ""
-    assert _line_breaks_in(string_array([*rows, "b\nc"])) == "\n"
-    assert _line_breaks_in(string_array([*rows, "b\r\nc"])) == LINE_BREAKS
+    assert _line_breaks_present(string_array(rows)) == frozenset()
+    assert _line_breaks_present(string_array([*rows, "b\nc"])) == frozenset("\n")
+    assert _line_breaks_present(string_array([*rows, "b\r\nc"])) == LINE_BREAKS
 
 
 def test_column_content_widths_are_repeatable(
