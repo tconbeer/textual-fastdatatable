@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-08-20
+
 - A multi-line cell now ends in a dim `…⏎`, so a value with lines below the first no
   longer reads as the one line it shows
   ([tconbeer/harlequin#635](https://github.com/tconbeer/harlequin/issues/635),
@@ -237,7 +239,8 @@ All notable changes to this project will be documented in this file.
 
 - Initial release. Adds DataTable and ArrowBackend, which is 1000x faster for datasets of 500k records or more.
 
-[unreleased]: https://github.com/tconbeer/textual-fastdatatable/compare/0.18.0...HEAD
+[unreleased]: https://github.com/tconbeer/textual-fastdatatable/compare/0.19.0...HEAD
+[0.19.0]: https://github.com/tconbeer/textual-fastdatatable/compare/0.18.0...0.19.0
 [0.18.0]: https://github.com/tconbeer/textual-fastdatatable/compare/0.17.1...0.18.0
 [0.17.1]: https://github.com/tconbeer/textual-fastdatatable/compare/0.17.0...0.17.1
 [0.17.0]: https://github.com/tconbeer/textual-fastdatatable/compare/0.16.1...0.17.0
