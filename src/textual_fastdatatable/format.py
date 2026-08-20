@@ -7,6 +7,7 @@ from itertools import chain
 from typing import cast
 
 from rich.align import Align
+from rich.cells import cell_len
 from rich.console import Console, ConsoleOptions, RenderableType
 from rich.errors import MarkupError
 from rich.markup import escape
@@ -20,17 +21,29 @@ MAX_MEASURE_WIDTH = 2**16
 """The width of the fallback console: with no app to measure against, nothing is known
 about the screen a value will be rendered on, so nothing caps the measurement."""
 
-MULTILINE_MARKER = "…"
+MULTILINE_MARKER = "…⏎"
 """Marks a cell whose value carries on past the one line a row has room for.
 
 Rows are always one line tall, so everything below the first line of a multi-line
 value is unrenderable. Without a marker that value is indistinguishable from the
 one line it shows -- and a value that *starts* with a line break is
 indistinguishable from an empty one (tconbeer/harlequin#635). The marker says
-there is more, and the cell's tooltip shows it."""
+there is more, and the cell's tooltip shows it.
+
+Two glyphs, not the bare ellipsis it reads as half of: rich ends a value clipped
+to the *column's width* with `…` as well, so an ellipsis alone cannot say whether
+the rest of a value is off to the right or below. The return symbol says below.
+It is `East_Asian_Width=Neutral`, so unlike the ellipsis beside it no terminal
+should give it a second cell."""
 
 MULTILINE_MARKER_STYLE = "dim italic"
 """Styled so the marker reads as a marker, not as data the value ends with."""
+
+MULTILINE_MARKER_WIDTH = cell_len(MULTILINE_MARKER)
+"""The cells the marker occupies, reserved out of a cell's width when one is given.
+
+Measured rather than written down, so the marker above stays the only place its
+width is decided."""
 
 LINE_BREAK_PROG = re.compile(r"[\r\n]")
 """What counts as the end of the first line of a value.
@@ -69,18 +82,27 @@ def _split_first_line(value: str, truncate: bool) -> tuple[str, bool]:
     return value[: match.start()], True
 
 
-def _escaped(head: str, truncated: bool) -> str:
-    """A string rendered literally, with the truncation marker if it was clipped.
+def _mark_truncated(text: Text, max_width: int | None) -> Text:
+    """Append the marker to `text`, which is a value's first line, in place.
 
-    Escaped strings are returned as markup for the console to unescape, so the
-    marker is markup too -- it is the only part meant to be parsed.
+    The marker is reserved out of `max_width` rather than left to compete with the
+    value for it: rich would otherwise clip the tail of an over-wide cell, and the
+    marker, being the tail, is the first thing to go -- exactly in the columns
+    whose values are most likely to have lines below. `max_width` is None wherever
+    nothing bounds the value, which is every measurement (see `measure_width`) and
+    every tooltip.
+
+    The value is cropped rather than ellipsized, because the marker opens with an
+    ellipsis of its own; letting rich add a second one reads as a typo, not as a
+    second kind of truncation.
     """
-    if not truncated:
-        return escape(head)
-    return f"{escape(head)}[{MULTILINE_MARKER_STYLE}]{MULTILINE_MARKER}[/]"
+    if max_width is not None:
+        text.truncate(max(max_width - MULTILINE_MARKER_WIDTH, 0), overflow="crop")
+    text.append(MULTILINE_MARKER, style=MULTILINE_MARKER_STYLE)
+    return text
 
 
-def truncate_to_first_line(text: Text) -> Text:
+def truncate_to_first_line(text: Text, max_width: int | None = None) -> Text:
     """Clip `text` to its first line, marking it if there was more.
 
     Returns `text` itself when it is already one line, so the common case copies
@@ -90,7 +112,7 @@ def truncate_to_first_line(text: Text) -> Text:
     match = LINE_BREAK_PROG.search(text.plain)
     if match is None:
         return text
-    return text[: match.start()].append(MULTILINE_MARKER, style=MULTILINE_MARKER_STYLE)
+    return _mark_truncated(text[: match.start()], max_width)
 
 
 def measure_width(
@@ -133,6 +155,7 @@ def cell_formatter(
     col: Column | None = None,
     render_markup: bool = True,
     truncate_multiline: bool = True,
+    max_width: int | None = None,
 ) -> RenderableType:
     """Convert a cell into a Rich renderable for display.
 
@@ -146,6 +169,9 @@ def cell_formatter(
             first line, followed by `MULTILINE_MARKER`. On by default, since a
             row is one line tall and the rest would be dropped silently. Callers
             that have room for every line -- the tooltip -- pass False.
+        max_width: The cells the value will be rendered into, when the caller
+            knows. Only a clipped value reads it, to reserve room for the marker
+            (see `_mark_truncated`); pass None where nothing bounds the value.
 
     Returns:
         A renderable to be displayed which represents the data.
@@ -158,15 +184,15 @@ def cell_formatter(
         try:
             rich_text = Text.from_markup(head)
         except MarkupError:
-            # an escaped string is handed back as markup, so the marker is too
-            return _escaped(head, truncated)
-        if truncated:
-            rich_text.append(MULTILINE_MARKER, style=MULTILINE_MARKER_STYLE)
-        return rich_text
+            # rich will not parse it, so hand back something it renders as it is
+            return _mark_truncated(Text(head), max_width) if truncated else escape(head)
+        return _mark_truncated(rich_text, max_width) if truncated else rich_text
 
     elif isinstance(obj, str):
         head, truncated = _split_first_line(obj, truncate_multiline)
-        return _escaped(head, truncated)
+        # `Text` renders literally, which is what escaping the markup achieves;
+        # only a marked value needs to be one, so that the mark can carry a style
+        return _mark_truncated(Text(head), max_width) if truncated else escape(head)
 
     elif isinstance(obj, bool):
         return Align(
@@ -227,7 +253,7 @@ def cell_formatter(
         return escape(preview)
 
     elif isinstance(obj, Text):
-        return truncate_to_first_line(obj) if truncate_multiline else obj
+        return truncate_to_first_line(obj, max_width) if truncate_multiline else obj
 
     elif not is_renderable(obj):
         return str(obj)

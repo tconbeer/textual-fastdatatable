@@ -7,6 +7,7 @@ from rich.text import Text
 from textual_fastdatatable.format import (
     MAX_MEASURE_WIDTH,
     MULTILINE_MARKER,
+    MULTILINE_MARKER_WIDTH,
     cell_formatter,
     measure_width,
     truncate_to_first_line,
@@ -172,3 +173,46 @@ def test_single_line_text_is_returned_unchanged() -> None:
 
     assert cell_formatter(value, null_rep=NULL) is value
     assert truncate_to_first_line(value) is value
+
+
+@pytest.mark.parametrize(
+    "max_width,expected",
+    [
+        (None, "first line" + MULTILINE_MARKER),  # nothing bounds it
+        (20, "first line" + MULTILINE_MARKER),  # room to spare
+        (12, "first line" + MULTILINE_MARKER),  # exactly enough
+        (8, "first " + MULTILINE_MARKER),  # the value gives way, not the marker
+        (3, "f" + MULTILINE_MARKER),
+        (2, MULTILINE_MARKER),  # room for nothing but the marker
+    ],
+)
+def test_the_marker_is_reserved_out_of_the_width(
+    max_width: int | None, expected: str
+) -> None:
+    """The marker must not be the tail rich clips off an over-wide cell.
+
+    It is the last thing on the line, so leaving it to compete with the value for
+    the width loses it exactly where lines below are most likely -- a wide column
+    of text. The value gives way instead.
+    """
+    result = cell_formatter(
+        "first line\nsecond line", null_rep=NULL, max_width=max_width
+    )
+
+    assert _plain(result) == expected
+    if max_width is not None:
+        assert measure_width(result) <= max(max_width, MULTILINE_MARKER_WIDTH)
+
+
+def test_a_cropped_value_does_not_get_a_second_ellipsis() -> None:
+    """The marker opens with one; rich adding another reads as a typo."""
+    result = cell_formatter("a long first line\nmore", null_rep=NULL, max_width=10)
+
+    assert _plain(result).count("…") == 1
+
+
+def test_a_single_line_value_is_never_clipped_by_the_marker_reservation() -> None:
+    """Only a marked value reserves anything; everything else renders as it was."""
+    result = cell_formatter("a long single line", null_rep=NULL, max_width=4)
+
+    assert _plain(result) == "a long single line"

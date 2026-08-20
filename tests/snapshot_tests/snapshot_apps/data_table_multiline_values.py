@@ -12,13 +12,17 @@ ROWS = [
     ("carriage return", "before\rafter"),
     ("markup", "[red]styled[/] first line\nand more"),
     ("blank", ""),
+    # the marker is reserved out of the width, so it survives a first line that
+    # is itself too wide for the capped column
+    ("capped", "a first line long enough to fill the whole column\nand more"),
+    ("capped, one line", "a single line long enough to fill the whole column"),
 ]
 
 
 class TableApp(App):
     def compose(self) -> ComposeResult:
         backend = ArrowBackend.from_records(ROWS, has_header=True)
-        yield DataTable(backend=backend)
+        yield DataTable(backend=backend, max_column_content_width=32)
 
 
 app = TableApp()

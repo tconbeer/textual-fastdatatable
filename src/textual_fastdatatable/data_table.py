@@ -58,7 +58,7 @@ from textual.widgets import Tooltip
 from typing_extensions import Self
 
 from textual_fastdatatable.backend import DataTableBackend, create_backend
-from textual_fastdatatable.column import Column
+from textual_fastdatatable.column import CELL_X_PADDING, Column
 from textual_fastdatatable.format import (
     cell_formatter,
     has_line_break,
@@ -1814,7 +1814,7 @@ class DataTable(ScrollView, can_focus=True):
         return RowRenderables(label, formatted_row_cells)
 
     def _get_cell_renderable(
-        self, row_index: int, column_index: int
+        self, row_index: int, column_index: int, max_width: int | None = None
     ) -> RenderableType | Text:
         """Get renderables for the cell currently at the given row index,
         column index tuple. The renderable
@@ -1823,12 +1823,17 @@ class DataTable(ScrollView, can_focus=True):
         Args:
             row_index: Index of the row.
             column_index: Index of the column.
+            max_width: The cells the value will be rendered into, so that a
+                multi-line value can reserve room for its truncation marker.
+                None when the caller is measuring rather than rendering.
 
         Returns:
             A RenderableType (or Text) containing the the rendered cell.
         """
         if row_index == -1:
-            return truncate_to_first_line(self.ordered_columns[column_index].label)
+            return truncate_to_first_line(
+                self.ordered_columns[column_index].label, max_width
+            )
 
         datum = self.get_cell_at(Coordinate(row=row_index, column=column_index))
         return cell_formatter(
@@ -1836,6 +1841,7 @@ class DataTable(ScrollView, can_focus=True):
             null_rep=self.null_rep,
             col=self.ordered_columns[column_index],
             render_markup=self.render_markup,
+            max_width=max_width,
         )
 
     def _render_cell(
@@ -1891,7 +1897,10 @@ class DataTable(ScrollView, can_focus=True):
                 cell = row_label if row_label is not None else ""
             else:
                 cell = self._get_cell_renderable(
-                    row_index=row_index, column_index=column_index
+                    row_index=row_index,
+                    column_index=column_index,
+                    # the padding `Padding` adds below is not the value's to use
+                    max_width=width - CELL_X_PADDING,
                 )
 
             component_style, post_style = self._get_styles_to_render_cell(

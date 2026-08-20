@@ -23,10 +23,10 @@ def test_column_content_widths(backend: DataTableBackend) -> None:
         ("señor", 5),  # six characters, one of them a zero-width combining tilde
         ("a\tb", 3),  # ASCII, tab included: Arrow's character count is its width
         # a row is one line tall, so only the first line of a multi-line value is
-        # rendered, followed by a one-cell truncation marker
-        ("日\nbbbb", 3),
-        ("aaaa\rb", 5),  # a carriage return ends the first line too
-        ("\nbbbb", 1),  # a value that starts with a break renders as the marker alone
+        # rendered, followed by the two-cell truncation marker
+        ("日\nbbbb", 4),
+        ("aaaa\rb", 6),  # a carriage return ends the first line too
+        ("\nbbbb", 2),  # a value that starts with a break renders as the marker alone
     ],
 )
 def test_column_content_widths_are_measured_in_cells(
@@ -81,10 +81,11 @@ def test_line_breaks_match_the_formatters() -> None:
     from textual_fastdatatable.format import (
         LINE_BREAK_PROG,
         MULTILINE_MARKER,
+        MULTILINE_MARKER_WIDTH,
         measure_width,
     )
 
-    assert measure_width(MULTILINE_MARKER) == _MARKER_WIDTH
+    assert measure_width(MULTILINE_MARKER) == MULTILINE_MARKER_WIDTH == _MARKER_WIDTH
     for char in map(chr, range(0x110000)):
         assert (LINE_BREAK_PROG.search(char) is not None) == (char in LINE_BREAKS), (
             f"format and backend disagree about {char!r}"
@@ -94,12 +95,12 @@ def test_line_breaks_match_the_formatters() -> None:
 @pytest.mark.parametrize(
     "value,expected_width",
     [
-        ("aaaa\nbb", 5),
-        ("aaaa\r\nbb", 5),  # the CR ends the line, and the LF after it changes nothing
-        ("aaaa\rbb", 5),
-        ("bb\naaaa", 3),  # the first line is measured, not the widest one
-        ("\naaaa", 1),
-        ("aaaa\n", 5),
+        ("aaaa\nbb", 6),
+        ("aaaa\r\nbb", 6),  # the CR ends the line, and the LF after it changes nothing
+        ("aaaa\rbb", 6),
+        ("bb\naaaa", 4),  # the first line is measured, not the widest one
+        ("\naaaa", 2),
+        ("aaaa\n", 6),
     ],
 )
 def test_multiline_widths_are_measured_over_a_whole_column(

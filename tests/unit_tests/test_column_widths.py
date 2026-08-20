@@ -5,6 +5,7 @@ from rich.text import Text
 from textual.app import App, ComposeResult
 
 from textual_fastdatatable import DataTable
+from textual_fastdatatable.format import MULTILINE_MARKER
 
 WIDE_LABEL = "日本語"
 """Three double-width characters: three characters, six cells."""
@@ -78,3 +79,40 @@ async def test_label_is_not_measured_wider_than_the_console() -> None:
     async with app.run_test(size=(80, 24)):
         (column,) = table.ordered_columns
         assert column.render_width == 82
+
+
+@pytest.mark.asyncio
+async def test_truncation_marker_survives_a_capped_column() -> None:
+    """The marker is reserved out of the width, so the value gives way to it.
+
+    Left to compete for the width, the marker is the tail rich clips off first,
+    which would drop it in exactly the wide text columns whose values are most
+    likely to carry lines below.
+    """
+    table = DataTable(
+        data={"note": ["a first line too wide for the cap\nand a second line"]},
+        max_column_content_width=20,
+    )
+    app = TableApp(table)
+    async with app.run_test(size=(40, 6)):
+        rendered = table.render_line(1).text
+
+    assert rendered.rstrip().endswith(MULTILINE_MARKER)
+    # ... and the ellipsis the marker opens with is the only one: rich adding a
+    # second for the width would read as a typo
+    assert rendered.count("…") == 1
+
+
+@pytest.mark.asyncio
+async def test_a_single_line_value_is_still_clipped_the_ordinary_way() -> None:
+    """Nothing is reserved for a value with no lines below, so nothing changes."""
+    table = DataTable(
+        data={"note": ["a single line too wide for the cap"]},
+        max_column_content_width=20,
+    )
+    app = TableApp(table)
+    async with app.run_test(size=(40, 6)):
+        rendered = table.render_line(1).text
+
+    assert rendered.rstrip().endswith("…")
+    assert MULTILINE_MARKER not in rendered

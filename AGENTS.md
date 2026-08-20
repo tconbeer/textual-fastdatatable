@@ -94,7 +94,8 @@ measure a value when:
   regex.
 
 A row is one line tall, so a value with a line break renders as its first line plus
-`format.MULTILINE_MARKER`, and is measured that way too: `_measure_cells` takes the
+`format.MULTILINE_MARKER` (`…⏎` — the return symbol is what separates it from the plain
+`…` rich leaves on a value clipped to the column's width), and is measured that way too: `_measure_cells` takes the
 position of the first break (`pc.find_substring`, which for an all-ASCII value is a
 width) and adds the marker to it. It asks only of a column `_line_breaks_in` has
 already found a break in — scanning the character buffer as bytes costs a few
@@ -103,6 +104,13 @@ break in it, which is almost every column, never pays for the search.
 `backend.LINE_BREAKS` and `_MARKER_WIDTH` restate what `format` does, because `backend`
 cannot import it; `test_backends.test_line_breaks_match_the_formatters` holds the two
 in step.
+
+When a cell *renders*, `_render_cell` passes the room it has as `cell_formatter`'s
+`max_width`, and a clipped value is cropped to leave the marker its cells. Reserving it
+is what keeps it visible in a column capped by `max_column_content_width`: the marker is
+the tail of the line, so rich's own overflow would otherwise clip it away first — in
+exactly the wide text columns whose values are likeliest to have lines below. Measuring
+passes no `max_width`, since nothing bounds a value being measured.
 
 Because `measure_width` renders the value, it has to be told whether the widget renders
 markup; `_measure_cells` is registered as two UDFs per type, `_cell_widths` and

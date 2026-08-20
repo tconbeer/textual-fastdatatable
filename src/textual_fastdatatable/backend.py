@@ -80,10 +80,11 @@ _SCAN_BLOCK_SIZE = 1 << 20
 """How much of a character buffer `_line_breaks_in` copies at a time, so that
 scanning a large column does not double its memory."""
 
-_MARKER_WIDTH = 1
+_MARKER_WIDTH = 2
 """The cells `format.MULTILINE_MARKER` takes, added to a clipped value's first line.
 
-Asserted against `format` by `test_backends.test_line_breaks_match_the_formatters`."""
+Asserted against `format.MULTILINE_MARKER_WIDTH` by
+`test_backends.test_line_breaks_match_the_formatters`."""
 
 
 def _measure_cells(arr: pa.Array, render_markup: bool) -> pa._PandasConvertible:
