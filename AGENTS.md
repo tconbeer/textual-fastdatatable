@@ -126,9 +126,22 @@ markup (`display_text` escapes what renders literally), so they are measured wit
 `render_markup=True` whatever the table renders strings as. `_measure_display_text`
 walks the column `_VALUE_BLOCK_SIZE` values at a time and keeps the widest, so a large
 column never holds a Python object per row — the bound the scalar UDF this replaced got
-from Arrow's chunking. This path costs ~1.5s per million values, against ~20ms for a
+from Arrow's chunking. This path costs 1.5–5s per million values, against ~20ms for a
 column Arrow can cast, so what belongs on the fast side of
 `_arrow_casts_to_display_text` is a performance question as much as a correctness one.
+
+An extension type gets a look before any of that, because it is a storage type with a
+meaning attached and only the type says which of the two a cell shows. `arrow.json`,
+`arrow.opaque` and every type this pyarrow has no class for leave the value as the
+storage's — pyarrow's own `ExtensionScalar.as_py` — so `_measure` recurses into
+`_extension_storage` and the column is measured on whichever path its storage belongs
+to (a json column is measured as the strings it is). `arrow.uuid` and `arrow.bool8`
+override `as_py`, and their values render at a width their Python type fixes
+(`format.FIXED_WIDTH_TYPES`), so one value measures the column, as for a temporal type.
+**The test is the scalar class, never whether the value equals its storage**:
+`arrow.bool8`'s `True` equals its storage's `1` and renders `✓ True` against `1`. A
+pyarrow that gives one of these a class of its own only costs a measurement; it cannot
+mismeasure, which is what makes the rule safe for extension types nobody has seen yet.
 
 Every UDF is registered through `_register_udf`, which registers a name at most once:
 `pc.register_scalar_function` raises for a name that is taken **and drops a reference to

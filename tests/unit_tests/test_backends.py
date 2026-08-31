@@ -280,6 +280,16 @@ def _uuid_array() -> pa.Array:
     [
         # the storage of an arrow.uuid is 16 bytes; a cell shows its 36 characters
         (_uuid_array(), 36),
+        # an arrow.json is its storage's string, and is measured as one
+        pytest.param(
+            pa.ExtensionArray.from_storage(pa.json_(), _array(['{"a": 日}']))
+            if hasattr(pa, "json_")
+            else None,
+            9,  # the wide character is two cells, as it is in a string column
+            marks=pytest.mark.skipif(
+                not hasattr(pa, "json_"), reason="pyarrow<19 has no arrow.json"
+            ),
+        ),
         # an arrow.bool8 is stored as an int8, and rendered as a bool: "✓ True "
         (
             pa.ExtensionArray.from_storage(pa.bool8(), _array([1, 0], type=pa.int8())),
@@ -397,3 +407,53 @@ def test_polars_cells_are_python_values(value: Any, expected: Any) -> None:
     assert backend.get_cell_at(0, 0) == expected
     assert backend.get_column_at(0) == [expected]
     assert backend.get_row_at(0) == [expected]
+
+
+def test_all_null_extension_columns_measure_nothing() -> None:
+    """Every value renders as the widget's null_rep, which the widget measures."""
+    storage = _array([None, None], type=pa.binary(16))
+    table = pa.table({"u": pa.ExtensionArray.from_storage(pa.uuid(), storage)})
+
+    assert ArrowBackend(table).column_content_widths == [0]
+
+
+@pytest.mark.parametrize(
+    "array,converted",
+    [
+        # arrow.uuid renders every value 36 characters wide, so one is measured
+        (_uuid_array(), 1),
+        # an arrow.json is its storage's string: Arrow measures the column itself
+        (
+            pa.ExtensionArray.from_storage(pa.json_(), _array(['{"a": 1}'] * 3))
+            if hasattr(pa, "json_")
+            else _uuid_array(),
+            0,
+        ),
+        # nothing is known about a struct's values, so every one is converted
+        (
+            _array([{"a": 1}] * 3, type=pa.struct([("a", pa.int64())])),
+            3,
+        ),
+    ],
+)
+def test_extension_columns_are_not_converted_value_by_value(
+    monkeypatch: pytest.MonkeyPatch, array: pa.Array, converted: int
+) -> None:
+    """What an extension type says about its values is what saves the conversion.
+
+    A column of a million uuids measured every one of them before this counted.
+    """
+    from textual_fastdatatable import format as formatter
+
+    calls = 0
+    display_text = formatter.display_text
+
+    def counted(*args: Any, **kwargs: Any) -> str:
+        nonlocal calls
+        calls += 1
+        return display_text(*args, **kwargs)
+
+    monkeypatch.setattr(formatter, "display_text", counted)
+
+    assert ArrowBackend(pa.table({"one": array})).column_content_widths
+    assert calls == converted

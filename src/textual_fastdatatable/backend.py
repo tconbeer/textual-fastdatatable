@@ -6,7 +6,7 @@ from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from contextlib import suppress
 from datetime import date, datetime
 from pathlib import Path
-from typing import Any, Generic, Literal, TypeVar
+from typing import Any, Generic, Literal, TypeVar, cast
 
 import pyarrow as pa
 import pyarrow.compute as pc
@@ -253,6 +253,30 @@ def _measure_display_text(blocks: Iterable[list[Any]]) -> int:
         strings = pa.array([display_text(value) for value in values], type=pa.string())
         widest = max(widest, _measure_strings(strings, render_markup=True) or 0)
     return widest
+
+
+def _extension_storage(arr: pa._PandasConvertible) -> pa._PandasConvertible:
+    """The values an extension array is stored as, chunk for chunk."""
+    storage_type = cast(pa.BaseExtensionType, arr.type).storage_type
+    if isinstance(arr, pa.ChunkedArray):
+        chunks = [cast(pa.ExtensionArray, chunk).storage for chunk in arr.chunks]
+        return pa.chunked_array(chunks, type=storage_type)
+    return cast(pa.ExtensionArray, arr).storage
+
+
+def _extension_value_is_its_storage(scalar: pa.Scalar) -> bool:
+    """Whether an extension type leaves its values as the storage's values.
+
+    True unless the scalar class overrides `as_py`, which is not the same as the two
+    comparing equal: `arrow.bool8`'s `True` equals its storage's `1` and renders `✓`."""
+    return type(scalar).as_py is pa.ExtensionScalar.as_py
+
+
+def _renders_at_a_fixed_width(value: Any) -> bool:
+    """Whether every value of this one's type renders as wide as it does."""
+    from textual_fastdatatable.format import FIXED_WIDTH_TYPES
+
+    return isinstance(value, FIXED_WIDTH_TYPES)
 
 
 def _arrow_casts_to_display_text(dtype: pa.DataType) -> bool:
@@ -821,6 +845,26 @@ class ArrowBackend(DataTableBackend[pa.Table]):
                 yield [self._handle_overflow(scalar) for scalar in block]
 
     def _measure(self, arr: pa._PandasConvertible) -> int:
+        # an extension type is a storage type with a meaning attached, and which of
+        # the two a cell shows is the type's to say. Where the meaning is only an
+        # annotation -- `arrow.json`, `arrow.opaque`, and any type this pyarrow has
+        # no class for -- the value is the storage's value, so the storage is what
+        # gets measured, on whichever path suits it. Where it is not, the value is a
+        # Python object of its own, and `arrow.uuid`'s and `arrow.bool8`'s render at
+        # a width their type fixes, so one value measures the column. Anything else
+        # falls through to the value-by-value path below. A pyarrow that gives one of
+        # these a class of its own only costs a measurement; it cannot mismeasure.
+        if isinstance(arr.type, pa.BaseExtensionType):
+            present = arr.drop_null()
+            if not len(present):
+                return 0  # every value is null, and a null renders as the null_rep
+            scalar = present[0]
+            if _extension_value_is_its_storage(scalar):
+                return self._measure(_extension_storage(arr))
+            value = scalar.as_py()
+            if _renders_at_a_fixed_width(value):
+                return _measure_width(value)
+
         # with some types we can measure the width more efficiently
         if pt.is_boolean(arr.type):
             return 7

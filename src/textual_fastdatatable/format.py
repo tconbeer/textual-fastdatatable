@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import uuid
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 from itertools import chain
@@ -34,6 +35,10 @@ MULTILINE_MARKER_WIDTH = 2
 
 BINARY_PREVIEW_BYTES = 32
 """Bytes of a binary value a cell shows before summarizing the rest of them."""
+
+FIXED_WIDTH_TYPES = (bool, uuid.UUID)
+"""Types whose every value renders the same width: a uuid is 36 characters and a
+bool is 7, so a column of them is measured from one value, like a temporal type."""
 
 LINE_BREAK_PROG = re.compile(r"[\r\n]")
 """Where a value's first line ends.
