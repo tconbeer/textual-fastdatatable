@@ -63,6 +63,8 @@ A = TypeVar("A", bound="_PandasConvertible")
 class _PandasConvertible:
     @property
     def type(self) -> DataType: ...  # noqa: A003
+    def __len__(self) -> int: ...
+    def slice(self: A, offset: int = 0, length: int | None = None) -> A: ...  # noqa: A003
     def cast(
         self: A,
         target_type: DataType | None = None,

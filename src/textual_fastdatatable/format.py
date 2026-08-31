@@ -52,6 +52,17 @@ ConsoleOptions on every access, which is about half the cost of measuring a shor
 value; this console has a fixed width and is never resized, so its options are too."""
 
 
+def _escape(text: str) -> str:
+    """`rich.markup.escape`, skipped for the values it would leave alone.
+
+    escape() runs a substitution over every value it is handed; testing for the two
+    things it acts on -- a `[` to escape, and a trailing backslash to double -- costs
+    a fraction of that, and almost nothing measured has either. Measuring a column of
+    binary spent more time here than on the previews themselves.
+    """
+    return escape(text) if "[" in text or text.endswith("\\") else text
+
+
 def has_line_break(obj: object) -> bool:
     """Whether a cell can only show part of this value.
 
@@ -151,11 +162,21 @@ def display_text(
         return ""
 
     elif isinstance(obj, str):
-        return obj if render_markup else escape(obj)
+        return obj if render_markup else _escape(obj)
+
+    elif isinstance(obj, (bytes, bytearray, memoryview)):
+        # binary values (e.g. varbinary columns) can contain sequences like
+        # [/...] that Rich would try to parse as markup; show an escaped,
+        # bounded preview instead. See tconbeer/harlequin#974.
+        data = bytes(obj)
+        preview = repr(data[:BINARY_PREVIEW_BYTES])
+        if len(data) > BINARY_PREVIEW_BYTES:
+            preview = f"{preview} (+{len(data) - BINARY_PREVIEW_BYTES} bytes)"
+        return _escape(preview)
 
     elif isinstance(obj, Text):
         # a Text renders literally, carrying its own styles, which take no cells
-        return escape(obj.plain)
+        return _escape(obj.plain)
 
     elif isinstance(obj, bool):
         return f"[dim]{'✓' if obj else 'X'}[/] {obj}{' ' if obj else ''}"
@@ -182,16 +203,6 @@ def display_text(
 
     elif isinstance(obj, timedelta):
         return str(obj)
-
-    elif isinstance(obj, (bytes, bytearray, memoryview)):
-        # binary values (e.g. varbinary columns) can contain sequences like
-        # [/...] that Rich would try to parse as markup; show an escaped,
-        # bounded preview instead. See tconbeer/harlequin#974.
-        data = bytes(obj)
-        preview = repr(data[:BINARY_PREVIEW_BYTES])
-        if len(data) > BINARY_PREVIEW_BYTES:
-            preview = f"{preview} (+{len(data) - BINARY_PREVIEW_BYTES} bytes)"
-        return escape(preview)
 
     else:
         # a uuid, a list, a struct's dict, a driver's own type: whatever it prints as
@@ -232,14 +243,16 @@ def cell_formatter(
             rich_text = Text.from_markup(head)
         except MarkupError:
             # not markup after all, so fall through to rendering it literally
-            return _mark_truncated(Text(head), max_width) if truncated else escape(head)
+            return (
+                _mark_truncated(Text(head), max_width) if truncated else _escape(head)
+            )
         return _mark_truncated(rich_text, max_width) if truncated else rich_text
 
     elif isinstance(obj, str):
         head, truncated = _split_first_line(obj, truncate_multiline)
         # `Text` renders literally, so it needs no escaping; a marked value has to
         # be one anyway, to carry the marker's style
-        return _mark_truncated(Text(head), max_width) if truncated else escape(head)
+        return _mark_truncated(Text(head), max_width) if truncated else _escape(head)
 
     elif isinstance(obj, bool):
         return Align(display_text(obj), style="bold" if obj else "", align="right")

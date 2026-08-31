@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import sys
 from abc import ABC, abstractmethod
-from collections.abc import Callable, Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from contextlib import suppress
 from datetime import date, datetime
 from pathlib import Path
@@ -236,18 +236,34 @@ def _measure_width(value: Any, render_markup: bool = True) -> int:
     return measure_width(value, render_markup=render_markup)
 
 
-def _display_strings(values: Iterable[Any]) -> pa._PandasConvertible:
-    """`values` as the markup a cell shows for each of them, for measuring a column.
+_VALUE_BLOCK_SIZE = 100_000
+"""Values converted to Python at a time by `_measure_display_text`.
 
-    The way a column of a type Arrow cannot render as text -- see
-    `_arrow_casts_to_display_text` -- becomes measurable: every value is converted
-    exactly as the widget converts it, so that the width measured from the result is
-    the width the value will occupy. Like `_measure_width`, this imports `format`
-    (and rich with it) on the first column that needs it, never at import time.
+A block, rather than the column, so that measuring a large column does not hold a
+Python object per row: the scalar UDF this replaced was handed a chunk at a time by
+Arrow, and got the same bound for free.
+"""
+
+
+def _measure_display_text(blocks: Iterable[list[Any]]) -> int:
+    """The width of the widest value in a column, block of values by block of values.
+
+    How a column of a type Arrow cannot render as text -- see
+    `_arrow_casts_to_display_text` -- gets measured: every value is converted exactly
+    as the widget converts it, so that the width measured from the result is the width
+    the value will occupy. Like `_measure_width`, this imports `format` (and rich with
+    it) on the first column that needs it, never at import time.
+
+    `display_text` has escaped whatever renders literally, so the result is markup
+    however the table renders its strings.
     """
     from textual_fastdatatable.format import display_text
 
-    return pa.array([display_text(value) for value in values], type=pa.string())
+    widest = 0
+    for values in blocks:
+        strings = pa.array([display_text(value) for value in values], type=pa.string())
+        widest = max(widest, _measure_strings(strings, render_markup=True) or 0)
+    return widest
 
 
 def _arrow_casts_to_display_text(dtype: pa.DataType) -> bool:
@@ -814,6 +830,15 @@ class ArrowBackend(DataTableBackend[pa.Table]):
     def _reset_content_widths(self) -> None:
         self._column_content_widths = []
 
+    def _value_blocks(self, arr: pa._PandasConvertible) -> Iterator[list[Any]]:
+        """The column's values as Python, `_VALUE_BLOCK_SIZE` of them at a time."""
+        for offset in range(0, len(arr), _VALUE_BLOCK_SIZE):
+            block = arr.slice(offset, _VALUE_BLOCK_SIZE)
+            try:
+                yield block.to_pylist()
+            except OverflowError:
+                yield [self._handle_overflow(scalar) for scalar in block]
+
     def _measure(self, arr: pa._PandasConvertible) -> int:
         # with some types we can measure the width more efficiently
         if pt.is_boolean(arr.type):
@@ -858,13 +883,7 @@ class ArrowBackend(DataTableBackend[pa.Table]):
         # but strings -- is converted value by value, the way the widget converts
         # it, since Arrow's own text for it is not what a cell shows (or, for the
         # types it cannot cast at all, does not exist).
-        try:
-            values: list[Any] = arr.to_pylist()
-        except OverflowError:
-            values = [self._handle_overflow(scalar) for scalar in arr]
-        # `_display_strings` has escaped whatever renders literally, so its result
-        # is markup however this table renders strings
-        return _measure_strings(_display_strings(values), render_markup=True)
+        return _measure_display_text(self._value_blocks(arr))
 
 
 if _HAS_POLARS:
@@ -1092,10 +1111,11 @@ if _HAS_POLARS:
                     arr.fill_null("<null>").to_arrow(), render_markup=self.render_markup
                 )
 
-            # the rest go to Python, value by value, the way the widget converts
-            # them. Their text is markup, so it is measured as markup however this
-            # table renders strings.
-            return _measure_strings(_display_strings(arr.to_list()), render_markup=True)
+            # the rest go to Python, value by value, the way the widget converts them
+            return _measure_display_text(
+                arr.slice(offset, _VALUE_BLOCK_SIZE).to_list()
+                for offset in range(0, len(arr), _VALUE_BLOCK_SIZE)
+            )
 
         def sort(
             self, by: list[tuple[str, Literal["ascending", "descending"]]] | str

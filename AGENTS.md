@@ -123,7 +123,12 @@ but strings, whatever a driver invents next — is converted value by value with
 `format.display_text`, which is what `cell_formatter` renders those values as; polars is
 the same, and cannot cast a binary or nested column at all. Those strings are already
 markup (`display_text` escapes what renders literally), so they are measured with
-`render_markup=True` whatever the table renders strings as.
+`render_markup=True` whatever the table renders strings as. `_measure_display_text`
+walks the column `_VALUE_BLOCK_SIZE` values at a time and keeps the widest, so a large
+column never holds a Python object per row — the bound the scalar UDF this replaced got
+from Arrow's chunking. This path costs ~1.5s per million values, against ~20ms for a
+column Arrow can cast, so what belongs on the fast side of
+`_arrow_casts_to_display_text` is a performance question as much as a correctness one.
 
 Every UDF is registered through `_register_udf`, which registers a name at most once:
 `pc.register_scalar_function` raises for a name that is taken **and drops a reference to

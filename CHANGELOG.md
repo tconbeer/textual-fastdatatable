@@ -12,6 +12,8 @@ All notable changes to this project will be documented in this file.
   polars' own idea of their text; a binary column no longer raises in the polars backend.
 - The polars backend now returns a nested cell (a list or an array) as a Python list, as
   the Arrow backend does, instead of a `polars.Series` that rendered as its repr.
+- Measuring a column of one of those types now walks it a block of values at a time, so
+  it no longer holds a Python object per row.
 
 ## [0.19.0] - 2026-08-20
 
