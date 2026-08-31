@@ -32,6 +32,9 @@ MULTILINE_MARKER_STYLE = "dim italic"
 MULTILINE_MARKER_WIDTH = 2
 """Cells `MULTILINE_MARKER` occupies. Checked by test_format."""
 
+BINARY_PREVIEW_BYTES = 32
+"""Bytes of a binary value a cell shows before summarizing the rest of them."""
+
 LINE_BREAK_PROG = re.compile(r"[\r\n]")
 """Where a value's first line ends.
 
@@ -125,6 +128,76 @@ def measure_width(
     ).maximum
 
 
+def display_text(
+    obj: object, col: Column | None = None, render_markup: bool = True
+) -> str:
+    """The markup a cell shows for `obj`, without the alignment `cell_formatter` adds.
+
+    `cell_formatter` builds every cell it does not render as a string or a `Text` out
+    of this, so a caller that needs a value *as text* gets what will be rendered
+    rather than a second opinion about it. The backends convert a column this way to
+    measure it, when Arrow (or polars) cannot cast it to the text the widget shows.
+
+    The result is markup, whatever `render_markup` says about the value: rich parses
+    markup in every string `cell_formatter` returns, so a value that renders literally
+    -- a binary preview, a string in a table that does not render markup -- is escaped
+    here, and is measured (and rendered) with markup on.
+
+    A value rich renders as itself has no text of its own; `str(obj)` is the best this
+    can do for it, and `cell_formatter` hands it to rich instead of coming here.
+    """
+    if obj is None:
+        # a null renders as the widget's null_rep, which is the widget's to measure
+        return ""
+
+    elif isinstance(obj, str):
+        return obj if render_markup else escape(obj)
+
+    elif isinstance(obj, Text):
+        # a Text renders literally, carrying its own styles, which take no cells
+        return escape(obj.plain)
+
+    elif isinstance(obj, bool):
+        return f"[dim]{'✓' if obj else 'X'}[/] {obj}{' ' if obj else ''}"
+
+    elif isinstance(obj, (float, Decimal)):
+        return f"{obj:n}"
+
+    elif isinstance(obj, int):
+        # no separators in ID fields
+        return str(obj) if col is not None and col.is_id else f"{obj:n}"
+
+    elif isinstance(obj, (datetime, time)):
+        formatted = obj.isoformat(timespec="milliseconds").replace("+00:00", "Z")
+        if obj in (datetime.max, datetime.min):
+            sign = "∞ " if obj == datetime.max else "-∞ "
+            return f"[bold]{sign}[/][dim]{formatted}[/]"
+        return formatted
+
+    elif isinstance(obj, date):
+        if obj in (date.max, date.min):
+            sign = "∞ " if obj == date.max else "-∞ "
+            return f"[bold]{sign}[/][dim]{obj.isoformat()}[/]"
+        return obj.isoformat()
+
+    elif isinstance(obj, timedelta):
+        return str(obj)
+
+    elif isinstance(obj, (bytes, bytearray, memoryview)):
+        # binary values (e.g. varbinary columns) can contain sequences like
+        # [/...] that Rich would try to parse as markup; show an escaped,
+        # bounded preview instead. See tconbeer/harlequin#974.
+        data = bytes(obj)
+        preview = repr(data[:BINARY_PREVIEW_BYTES])
+        if len(data) > BINARY_PREVIEW_BYTES:
+            preview = f"{preview} (+{len(data) - BINARY_PREVIEW_BYTES} bytes)"
+        return escape(preview)
+
+    else:
+        # a uuid, a list, a struct's dict, a driver's own type: whatever it prints as
+        return str(obj)
+
+
 def cell_formatter(
     obj: object,
     null_rep: Text,
@@ -169,68 +242,21 @@ def cell_formatter(
         return _mark_truncated(Text(head), max_width) if truncated else escape(head)
 
     elif isinstance(obj, bool):
-        return Align(
-            f"[dim]{'✓' if obj else 'X'}[/] {obj}{' ' if obj else ''}",
-            style="bold" if obj else "",
-            align="right",
-        )
+        return Align(display_text(obj), style="bold" if obj else "", align="right")
 
-    elif isinstance(obj, (float, Decimal)):
-        return Align(f"{obj:n}", align="right")
+    elif isinstance(obj, (float, Decimal, int)):
+        return Align(display_text(obj, col), align="right")
 
-    elif isinstance(obj, int):
-        if col is not None and col.is_id:
-            # no separators in ID fields
-            return Align(str(obj), align="right")
-        else:
-            return Align(f"{obj:n}", align="right")
-
-    elif isinstance(obj, (datetime, time)):
-
-        def _fmt_datetime(obj: datetime | time) -> str:
-            return obj.isoformat(timespec="milliseconds").replace("+00:00", "Z")
-
-        if obj in (datetime.max, datetime.min):
-            return Align(
-                (
-                    f"[bold]{'∞ ' if obj == datetime.max else '-∞ '}[/]"
-                    f"[dim]{_fmt_datetime(obj)}[/]"
-                ),
-                align="right",
-            )
-
-        return Align(_fmt_datetime(obj), align="right")
-
-    elif isinstance(obj, date):
-        if obj in (date.max, date.min):
-            return Align(
-                (
-                    f"[bold]{'∞ ' if obj == date.max else '-∞ '}[/]"
-                    f"[dim]{obj.isoformat()}[/]"
-                ),
-                align="right",
-            )
-
-        return Align(obj.isoformat(), align="right")
-
-    elif isinstance(obj, timedelta):
-        return Align(str(obj), align="right")
-
-    elif isinstance(obj, (bytes, bytearray, memoryview)):
-        # binary values (e.g. varbinary columns) can contain sequences like
-        # [/...] that Rich would try to parse as markup; show an escaped,
-        # truncated preview instead. See tconbeer/harlequin#974.
-        data = bytes(obj)
-        preview = repr(data[:32])
-        if len(data) > 32:
-            preview = f"{preview} (+{len(data) - 32} bytes)"
-        return escape(preview)
+    elif isinstance(obj, (datetime, time, date, timedelta)):
+        return Align(display_text(obj), align="right")
 
     elif isinstance(obj, Text):
         return truncate_to_first_line(obj, max_width) if truncate_multiline else obj
 
     elif not is_renderable(obj):
-        return str(obj)
+        # binary and everything else with no renderable of its own -- a uuid, a
+        # list, a struct's dict -- as the text `display_text` gives it
+        return display_text(obj)
 
     else:
         return cast(RenderableType, obj)

@@ -236,6 +236,39 @@ def _measure_width(value: Any, render_markup: bool = True) -> int:
     return measure_width(value, render_markup=render_markup)
 
 
+def _display_strings(values: Iterable[Any]) -> pa._PandasConvertible:
+    """`values` as the markup a cell shows for each of them, for measuring a column.
+
+    The way a column of a type Arrow cannot render as text -- see
+    `_arrow_casts_to_display_text` -- becomes measurable: every value is converted
+    exactly as the widget converts it, so that the width measured from the result is
+    the width the value will occupy. Like `_measure_width`, this imports `format`
+    (and rich with it) on the first column that needs it, never at import time.
+    """
+    from textual_fastdatatable.format import display_text
+
+    return pa.array([display_text(value) for value in values], type=pa.string())
+
+
+def _arrow_casts_to_display_text(dtype: pa.DataType) -> bool:
+    """Whether Arrow's cast to string yields the text a cell shows for this type.
+
+    Only the types stored as the characters they display can be measured from that
+    cast; everything else is converted value by value, in Python, by `_display_strings`.
+    Arrow renders a value its own way where it renders it at all: a binary type -- and
+    an extension type over one, since a cast reaches an extension array through its
+    storage -- is reinterpreted byte for byte, so an `arrow.uuid`'s 16 bytes become 16
+    bytes of would-be text (rarely valid UTF-8, and never the 36 characters the widget
+    shows) rather than failing the cast. A dictionary casts to the text of its values,
+    which is the text a cell shows only when those values are themselves text.
+    """
+    if pt.is_dictionary(dtype):
+        return _arrow_casts_to_display_text(dtype.value_type)
+    return bool(
+        pt.is_string(dtype) or pt.is_large_string(dtype) or pt.is_string_view(dtype)
+    )
+
+
 def create_backend(
     data: "AutoBackendType",
     max_rows: int | None = None,
@@ -812,32 +845,26 @@ class ArrowBackend(DataTableBackend[pa.Table]):
                 # valid temporal types all have the same width for their type
                 return _measure_width(value)
 
-        # for everything else, we need to compute it
-        # First, cast the data to strings
+        # everything else is measured as the text it renders as. A column Arrow
+        # stores as text becomes that text in one cast, and is measured as the
+        # widget renders a string: as markup, or literally.
+        if _arrow_casts_to_display_text(arr.type):
+            arr = arr.cast(pa.string(), safe=False)
+            # Markup is not stripped first: measuring parses it, the way the
+            # widget renders it.
+            return _measure_strings(arr.fill_null(""), render_markup=self.render_markup)
+
+        # every other type -- binary, extension, nested, a dictionary of anything
+        # but strings -- is converted value by value, the way the widget converts
+        # it, since Arrow's own text for it is not what a cell shows (or, for the
+        # types it cannot cast at all, does not exist).
         try:
-            arr = arr.cast(
-                pa.string(),
-                safe=False,
-            )
-        except (pal.ArrowNotImplementedError, pal.ArrowInvalid):
-            # some types can't be casted to strings natively by arrow, but they
-            # can be casted to strings by python. The arrow way is faster, but
-            # if it fails, register a python udf and try again
-            def py_str(_ctx: Any, arr: pa.Array) -> str | pa.Array | pa.ChunkedArray:
-                return pa.array([str(el) for el in arr], type=pa.string())
-
-            udf_name = _register_udf(
-                f"tfdt_pystr_{arr.type}",
-                py_str,
-                in_type=arr.type,
-                out_type=pa.string(),
-                summary="built-in str",
-            )
-            arr = pc.call_function(udf_name, [arr])
-
-        # next, measure the rendered width of each cell, then take the max. Markup
-        # is not stripped first: measuring parses it, the way the widget renders it.
-        return _measure_strings(arr.fill_null(""), render_markup=self.render_markup)
+            values: list[Any] = arr.to_pylist()
+        except OverflowError:
+            values = [self._handle_overflow(scalar) for scalar in arr]
+        # `_display_strings` has escaped whatever renders literally, so its result
+        # is markup however this table renders strings
+        return _measure_strings(_display_strings(values), render_markup=True)
 
 
 if _HAS_POLARS:
@@ -948,7 +975,9 @@ if _HAS_POLARS:
                     f"Cannot get column={column_index} in table with {len(self.data)} "
                     f"rows and {len(self.data.columns)} cols."
                 )
-            return list(self.data.to_series(column_index))
+            # to_list(), not list(): a nested value is a python list, the way the
+            # Arrow backend and `get_row_at` give it, rather than a polars Series
+            return self.data.to_series(column_index).to_list()
 
         def get_cell_at(self, row_index: int, column_index: int) -> Any:
             if (
@@ -961,7 +990,9 @@ if _HAS_POLARS:
                     f"Cannot get cell at row={row_index} col={column_index} in table "
                     f"with {len(self.data)} rows and {len(self.data.columns)} cols"
                 )
-            return self.data.to_series(column_index)[row_index]
+            # sliced first, so that a nested value is converted -- to a python list,
+            # as `get_row_at` gives it -- without converting the whole column
+            return self.data.to_series(column_index).slice(row_index, 1).to_list()[0]
 
         def drop_row(self, row_index: int) -> None:
             if row_index < 0 or row_index >= self.row_count:
@@ -1047,17 +1078,24 @@ if _HAS_POLARS:
             if dtype.is_(pld.Boolean()):
                 return 7
 
-            # for everything else, we need to compute it
+            # everything else is measured as the text it renders as, and only the
+            # types polars stores as text can be cast to that text: it raises for a
+            # binary or a nested column, and has its own idea of a struct.
+            if dtype == pld.String() or isinstance(dtype, pld.Enum):
+                arr = arr.cast(
+                    pl.Utf8(),
+                    strict=False,
+                )
 
-            arr = arr.cast(
-                pl.Utf8(),
-                strict=False,
-            )
+                # measured through Arrow, so that both backends measure the same way
+                return _measure_strings(
+                    arr.fill_null("<null>").to_arrow(), render_markup=self.render_markup
+                )
 
-            # measured through Arrow, so that both backends measure the same way
-            return _measure_strings(
-                arr.fill_null("<null>").to_arrow(), render_markup=self.render_markup
-            )
+            # the rest go to Python, value by value, the way the widget converts
+            # them. Their text is markup, so it is measured as markup however this
+            # table renders strings.
+            return _measure_strings(_display_strings(arr.to_list()), render_markup=True)
 
         def sort(
             self, by: list[tuple[str, Literal["ascending", "descending"]]] | str

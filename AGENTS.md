@@ -76,7 +76,7 @@ reporting the full input — the widget shows both counts.
 `column_content_widths` is the hot path for first paint. Each backend computes it with
 vectorized column operations rather than per-cell Python (`_measure`): booleans and nulls
 are constants, numerics measure only min/max, temporals measure one non-null value, and
-everything else casts the whole column to string and takes the widest result of
+everything else becomes the text a cell shows for it and takes the widest result of
 `_measure_strings`. That runs `_measure_cells` as an Arrow scalar UDF, which measures an
 array in cells rather than characters. Arrow measures the values it can by itself, and
 hands the rest to `backend._measure_width` — a lazy wrapper around
@@ -110,8 +110,20 @@ Because `measure_width` renders the value, it has to be told whether the widget 
 markup; `_measure_cells` is registered as two UDFs per type, `_cell_widths` and
 `_cell_widths_no_markup`, since a UDF is registered under its name for the life of the
 process. The result
-is cached on the backend and cleared by `_reset_content_widths()` on mutation. The Arrow
-path registers another scalar UDF as a fallback for types Arrow can't cast to string.
+is cached on the backend and cleared by `_reset_content_widths()` on mutation.
+
+Only a column already stored as the characters it displays can be turned into that text
+by Arrow itself — `_arrow_casts_to_display_text`: the string types, and a dictionary of
+them. **`arr.cast(pa.string())` is not a test of that**, because it succeeds for types it
+reinterprets rather than renders: a binary type, and an extension type over one, come
+back as their storage bytes, so an `arrow.uuid`'s 16 bytes became 16 bytes of would-be
+text (rarely valid UTF-8, which is how #176 crashed) rather than the 36 characters the
+widget draws. So every other type — binary, extension, nested, a dictionary of anything
+but strings, whatever a driver invents next — is converted value by value with
+`format.display_text`, which is what `cell_formatter` renders those values as; polars is
+the same, and cannot cast a binary or nested column at all. Those strings are already
+markup (`display_text` escapes what renders literally), so they are measured with
+`render_markup=True` whatever the table renders strings as.
 
 Every UDF is registered through `_register_udf`, which registers a name at most once:
 `pc.register_scalar_function` raises for a name that is taken **and drops a reference to
@@ -142,6 +154,11 @@ regex so `format.cell_formatter` omits thousands separators for those integers.
 numbers/dates, locale-formatting via `{obj:n}` (callers should `locale.setlocale()` first),
 escaping or parsing markup depending on `render_markup`, and rendering `datetime.max`/
 `date.max` (produced by `_handle_overflow` when Arrow values overflow Python types) as ∞.
+Every value it does not hand to rich as a string, a `Text` or a renderable of its own
+gets its text from `format.display_text` — bytes as a bounded escaped preview, anything
+else (a uuid, a list, a struct's dict) as `str(obj)`. That is the one place a value
+becomes text, so that the backends measure what the widget draws;
+`test_format.test_display_text_measures_as_the_cell_it_describes` holds the two in step.
 
 The render path is `render_line` → `_render_line_in_row` → `_render_cell`, each backed by
 an `LRUCache` (`_line_cache`, `_row_render_cache`, `_cell_render_cache`, `_tooltip_cache`).

@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+- Columns of Arrow extension types (like the `arrow.uuid` that pyarrow infers for
+  `uuid.UUID` values) no longer crash when their widths are measured; they are measured
+  as the text a cell shows for them
+  ([#176](https://github.com/tconbeer/textual-fastdatatable/issues/176)).
+- Binary and nested columns are now measured as they render, instead of as Arrow's or
+  polars' own idea of their text; a binary column no longer raises in the polars backend.
+- The polars backend now returns a nested cell (a list or an array) as a Python list, as
+  the Arrow backend does, instead of a `polars.Series` that rendered as its repr.
+
 ## [0.19.0] - 2026-08-20
 
 - A multi-line cell now ends in a dim `…⏎`, so a value with lines below the first no

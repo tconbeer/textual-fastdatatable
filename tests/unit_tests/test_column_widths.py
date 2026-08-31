@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import uuid
+
+import pyarrow as pa
 import pytest
 from rich.text import Text
 from textual.app import App, ComposeResult
@@ -116,3 +119,21 @@ async def test_a_single_line_value_is_still_clipped_the_ordinary_way() -> None:
 
     assert rendered.rstrip().endswith("…")
     assert MULTILINE_MARKER not in rendered
+
+
+@pytest.mark.asyncio
+async def test_a_column_of_an_extension_type_is_as_wide_as_it_renders() -> None:
+    """The whole path, for #176: a uuid is stored as 16 bytes and shown as 36 chars."""
+    value = uuid.UUID(int=1)
+    storage = pa.array([value.bytes], type=pa.binary(16))
+    assert isinstance(storage, pa.Array)
+    data = pa.table({"u": pa.ExtensionArray.from_storage(pa.uuid(), storage)})
+
+    table = DataTable(data=data)
+    app = TableApp(table)
+    async with app.run_test(size=(80, 6)):
+        (column,) = table.ordered_columns
+        rendered = table.render_line(1).text
+
+    assert column.render_width == 38  # 36 characters, plus the cell padding
+    assert rendered.strip() == str(value)

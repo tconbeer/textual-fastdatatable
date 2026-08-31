@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+import uuid
+from datetime import date, datetime, time, timedelta, timezone
+from decimal import Decimal
+from typing import Any
+
 import pytest
 from rich.console import Console
 from rich.text import Text
@@ -9,6 +14,7 @@ from textual_fastdatatable.format import (
     MULTILINE_MARKER,
     MULTILINE_MARKER_WIDTH,
     cell_formatter,
+    display_text,
     measure_width,
     truncate_to_first_line,
 )
@@ -232,3 +238,50 @@ def test_a_marked_value_is_not_double_escaped() -> None:
 
     assert _plain(result) == f"a [red]b{MULTILINE_MARKER}"
     assert "\\" not in _plain(result)
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        None,
+        True,
+        False,
+        1234567,
+        1.5,
+        Decimal("1.5"),
+        date(2024, 1, 1),
+        date.max,
+        datetime(2024, 1, 1, 12, 30, tzinfo=timezone.utc),
+        datetime.max,
+        time(1, 2, 3),
+        timedelta(seconds=90),
+        b"abc",
+        b"[red]not markup[/]",  # a preview of markup-hostile bytes renders literally
+        bytes(range(64)),  # a preview of the first 32, and a count of the rest
+        bytearray(b"a"),
+        memoryview(b"a"),
+        uuid.UUID(int=1),
+        [1, 2, 3],
+        {"a": 1},
+        "plain",
+        "[red]markup[/]",
+        "a\nb",  # only the first line and the marker are rendered, so measured
+        "日本語",
+        Text("a[b"),
+    ],
+)
+@pytest.mark.parametrize("render_markup", [True, False])
+def test_display_text_measures_as_the_cell_it_describes(
+    value: Any, render_markup: bool
+) -> None:
+    """A value's text renders at the width the value itself renders at.
+
+    The backends measure a column of a type Arrow cannot cast to text by converting
+    its values with `display_text` and measuring the result as markup -- which is
+    only the width the widget will render, cell by cell, if the two stay in step.
+    """
+    as_text = display_text(value, render_markup=render_markup)
+
+    assert measure_width(as_text, render_markup=True) == measure_width(
+        value, render_markup=render_markup
+    )
