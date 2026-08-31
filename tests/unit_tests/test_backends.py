@@ -329,11 +329,7 @@ def test_arrow_columns_are_measured_as_the_widget_renders_them(
 ) -> None:
     """A column is as wide as its values render, whatever Arrow makes of its type.
 
-    Only a type stored as the characters it displays can be measured from Arrow's
-    cast to string. Anything else is Arrow's own rendering of the value, when it is
-    not (for binary, and the extension types over it) a reinterpretation of the
-    value's bytes: the cast succeeds, and yields text nobody can read.
-    """
+    Arrow's cast to string reinterprets a binary type's bytes rather than failing."""
     backend = ArrowBackend(pa.table({"one": array}))
 
     assert backend.column_content_widths == [expected_width]
@@ -346,9 +342,7 @@ def test_arrow_columns_are_measured_as_the_widget_renders_them(
 def test_uuid_columns_do_not_decode_their_storage_as_utf8() -> None:
     """Regression test for #176: measuring an arrow.uuid column raised.
 
-    Casting the extension array to a string reinterprets the uuid's 16 bytes, which
-    are not UTF-8, and measuring the result decoded them.
-    """
+    The cast reinterpreted the uuid's 16 bytes, and measuring decoded them as UTF-8."""
     backend = ArrowBackend(pa.table({"u": _uuid_array()}))
 
     assert backend.column_content_widths == [36]
@@ -397,9 +391,7 @@ def test_polars_columns_are_measured_as_the_widget_renders_them(
 def test_polars_cells_are_python_values(value: Any, expected: Any) -> None:
     """A nested cell is a python value, the way the Arrow backend gives it.
 
-    `series[i]` hands back a polars Series for a nested value, which renders as its
-    own multi-line repr rather than as the list it holds.
-    """
+    `series[i]` hands back a Series, which renders as its own multi-line repr."""
     backend = PolarsBackend.from_dataframe(pl.DataFrame({"one": [value]}))
 
     assert backend.get_cell_at(0, 0) == expected

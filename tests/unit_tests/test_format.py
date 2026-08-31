@@ -276,10 +276,7 @@ def test_display_text_measures_as_the_cell_it_describes(
 ) -> None:
     """A value's text renders at the width the value itself renders at.
 
-    The backends measure a column of a type Arrow cannot cast to text by converting
-    its values with `display_text` and measuring the result as markup -- which is
-    only the width the widget will render, cell by cell, if the two stay in step.
-    """
+    The width the backends measure is the width the widget draws only if these agree."""
     as_text = display_text(value, render_markup=render_markup)
 
     assert measure_width(as_text, render_markup=True) == measure_width(

@@ -55,11 +55,7 @@ value; this console has a fixed width and is never resized, so its options are t
 def _escape(text: str) -> str:
     """`rich.markup.escape`, skipped for the values it would leave alone.
 
-    escape() runs a substitution over every value it is handed; testing for the two
-    things it acts on -- a `[` to escape, and a trailing backslash to double -- costs
-    a fraction of that, and almost nothing measured has either. Measuring a column of
-    binary spent more time here than on the previews themselves.
-    """
+    Testing for the two things it acts on costs a fraction of the substitution."""
     return escape(text) if "[" in text or text.endswith("\\") else text
 
 
@@ -144,19 +140,7 @@ def display_text(
 ) -> str:
     """The markup a cell shows for `obj`, without the alignment `cell_formatter` adds.
 
-    `cell_formatter` builds every cell it does not render as a string or a `Text` out
-    of this, so a caller that needs a value *as text* gets what will be rendered
-    rather than a second opinion about it. The backends convert a column this way to
-    measure it, when Arrow (or polars) cannot cast it to the text the widget shows.
-
-    The result is markup, whatever `render_markup` says about the value: rich parses
-    markup in every string `cell_formatter` returns, so a value that renders literally
-    -- a binary preview, a string in a table that does not render markup -- is escaped
-    here, and is measured (and rendered) with markup on.
-
-    A value rich renders as itself has no text of its own; `str(obj)` is the best this
-    can do for it, and `cell_formatter` hands it to rich instead of coming here.
-    """
+    Always markup: what renders literally is escaped, as rich parses every string."""
     if obj is None:
         # a null renders as the widget's null_rep, which is the widget's to measure
         return ""

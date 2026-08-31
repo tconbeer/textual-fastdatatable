@@ -237,26 +237,15 @@ def _measure_width(value: Any, render_markup: bool = True) -> int:
 
 
 _VALUE_BLOCK_SIZE = 100_000
-"""Values converted to Python at a time by `_measure_display_text`.
+"""Values `_measure_display_text` converts to Python at a time.
 
-A block, rather than the column, so that measuring a large column does not hold a
-Python object per row: the scalar UDF this replaced was handed a chunk at a time by
-Arrow, and got the same bound for free.
-"""
+A block, not the column, so measuring never holds a Python object per row."""
 
 
 def _measure_display_text(blocks: Iterable[list[Any]]) -> int:
-    """The width of the widest value in a column, block of values by block of values.
+    """The widest rendering of a column Arrow cannot render as text, block by block.
 
-    How a column of a type Arrow cannot render as text -- see
-    `_arrow_casts_to_display_text` -- gets measured: every value is converted exactly
-    as the widget converts it, so that the width measured from the result is the width
-    the value will occupy. Like `_measure_width`, this imports `format` (and rich with
-    it) on the first column that needs it, never at import time.
-
-    `display_text` has escaped whatever renders literally, so the result is markup
-    however the table renders its strings.
-    """
+    Converted as the widget converts them; `format` is imported on the first use."""
     from textual_fastdatatable.format import display_text
 
     widest = 0
@@ -269,15 +258,7 @@ def _measure_display_text(blocks: Iterable[list[Any]]) -> int:
 def _arrow_casts_to_display_text(dtype: pa.DataType) -> bool:
     """Whether Arrow's cast to string yields the text a cell shows for this type.
 
-    Only the types stored as the characters they display can be measured from that
-    cast; everything else is converted value by value, in Python, by `_display_strings`.
-    Arrow renders a value its own way where it renders it at all: a binary type -- and
-    an extension type over one, since a cast reaches an extension array through its
-    storage -- is reinterpreted byte for byte, so an `arrow.uuid`'s 16 bytes become 16
-    bytes of would-be text (rarely valid UTF-8, and never the 36 characters the widget
-    shows) rather than failing the cast. A dictionary casts to the text of its values,
-    which is the text a cell shows only when those values are themselves text.
-    """
+    True only for the types stored as the characters they display; see AGENTS.md."""
     if pt.is_dictionary(dtype):
         return _arrow_casts_to_display_text(dtype.value_type)
     return bool(
