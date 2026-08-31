@@ -8,19 +8,8 @@ All notable changes to this project will be documented in this file.
   `uuid.UUID` values) no longer crash when their widths are measured; they are measured
   as the text a cell shows for them
   ([#176](https://github.com/tconbeer/textual-fastdatatable/issues/176)).
-- Measuring a column of a canonical Arrow extension type is now fast: an `arrow.uuid`
-  column of a million rows measured in 4.9s and now measures in under a millisecond, and
-  an `arrow.json` column is measured as the strings it holds (0.1s per million rows).
-- A value whose type prints more than one line (a driver's own object, say) is now
-  clipped to its first line with the `…⏎` marker and given a tooltip, as a multi-line
-  string already was, instead of drawing a second line into the row below it.
-- A nested value containing something that looks like markup (a list or a struct with
-  `[red]` or `[/]` in it) now renders as itself instead of being parsed as markup, which
-  ate the brackets around it and raised `MarkupError` for an unbalanced tag.
-- Binary and nested columns are now measured as they render, instead of as Arrow's or
-  polars' own idea of their text; a binary column no longer raises in the polars backend.
-- The polars backend now returns a nested cell (a list or an array) as a Python list, as
-  the Arrow backend does, instead of a `polars.Series` that rendered as its repr.
+- Other enhancements and bug fixes related to displaying Arrow Extension and other
+  binary or nested types.
 
 ## [0.19.0] - 2026-08-20
 
