@@ -15,11 +15,19 @@ from textual_fastdatatable.format import (
     MULTILINE_MARKER_WIDTH,
     cell_formatter,
     display_text,
+    has_line_break,
     measure_width,
     truncate_to_first_line,
 )
 
 NULL = Text("")
+
+
+class MultiLine:
+    """A driver's own type, of the kind that prints more lines than a row shows."""
+
+    def __str__(self) -> str:
+        return "first line\nsecond line is longer"
 
 
 def _can_render(renderable: object) -> bool:
@@ -294,3 +302,19 @@ def test_markup_in_a_repr_is_not_markup(value: object) -> None:
     rendered = cell_formatter(value, null_rep=NULL)
     assert isinstance(rendered, str)
     assert Text.from_markup(rendered).plain == str(value)
+
+
+def test_a_multi_line_value_of_any_type_is_clipped_to_one_line() -> None:
+    """A row is one line tall whatever the value is, so every value is clipped to one.
+
+    A repr escapes its breaks; a type of a driver's own prints whatever it likes."""
+    rendered = cell_formatter(MultiLine(), null_rep=NULL)
+
+    assert isinstance(rendered, Text)
+    assert rendered.plain == f"first line{MULTILINE_MARKER}"
+    assert measure_width(MultiLine()) == len("first line") + MULTILINE_MARKER_WIDTH
+    # ... and the reader is told there is more, by a tooltip that shows all of it
+    assert has_line_break(MultiLine())
+    assert cell_formatter(MultiLine(), null_rep=NULL, truncate_multiline=False) == str(
+        MultiLine()
+    )

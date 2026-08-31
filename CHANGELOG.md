@@ -11,6 +11,9 @@ All notable changes to this project will be documented in this file.
 - Measuring a column of a canonical Arrow extension type is now fast: an `arrow.uuid`
   column of a million rows measured in 4.9s and now measures in under a millisecond, and
   an `arrow.json` column is measured as the strings it holds (0.1s per million rows).
+- A value whose type prints more than one line (a driver's own object, say) is now
+  clipped to its first line with the `…⏎` marker and given a tooltip, as a multi-line
+  string already was, instead of drawing a second line into the row below it.
 - A nested value containing something that looks like markup (a list or a struct with
   `[red]` or `[/]` in it) now renders as itself instead of being parsed as markup, which
   ate the brackets around it and raised `MarkupError` for an unbalanced tag.

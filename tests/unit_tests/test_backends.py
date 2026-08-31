@@ -20,6 +20,13 @@ from textual_fastdatatable.format import measure_width
 UUIDS = [uuid.UUID(int=i) for i in range(3)]
 
 
+class _MultiLine:
+    """A driver's own type, of the kind that prints more lines than a row shows."""
+
+    def __str__(self) -> str:
+        return "first line\nsecond line is longer"
+
+
 def _array(values: Sequence[Any], type: pa.DataType | None = None) -> pa.Array:  # noqa: A002
     """`pa.array`, narrowed: these arrays are never chunked."""
     array = pa.array(values, type=type)
@@ -373,6 +380,8 @@ def test_uuid_columns_do_not_decode_their_storage_as_utf8() -> None:
         (pl.Series([[1, 2]], dtype=pl.Array(pl.Int64, 2)), 6),
         (pl.Series([{"a": 1, "b": "x"}]), 18),
         (pl.Series([date(2024, 1, 1)], dtype=pl.Object), 10),
+        # a value that prints more lines than a row shows is measured as one line
+        (pl.Series([_MultiLine()], dtype=pl.Object), len("first line") + 2),
         (pl.Series([None, None]), 0),
         # text, on the other hand, polars measures itself
         (pl.Series(["日本語", "a"]), 6),

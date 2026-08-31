@@ -67,12 +67,14 @@ def _escape(text: str) -> str:
 def has_line_break(obj: object) -> bool:
     """Whether a cell can only show part of this value.
 
-    Only strings and `Text` ever can; every other type `cell_formatter` handles
-    renders on one line by construction.
+    Asked of the text the value renders as, since a type of a driver's own prints
+    whatever it likes -- and a cell showing one line of it owes the reader a tooltip.
     """
     if isinstance(obj, Text):
         obj = obj.plain
-    return isinstance(obj, str) and LINE_BREAK_PROG.search(obj) is not None
+    elif not isinstance(obj, str):
+        obj = display_text(obj)
+    return LINE_BREAK_PROG.search(obj) is not None
 
 
 def _split_first_line(value: str, truncate: bool) -> tuple[str, bool]:
@@ -260,8 +262,11 @@ def cell_formatter(
 
     elif not is_renderable(obj):
         # binary and everything else with no renderable of its own -- a uuid, a
-        # list, a struct's dict -- as the text `display_text` gives it
-        return display_text(obj)
+        # list, a struct's dict -- as the text `display_text` gives it, clipped to
+        # the one line a row has room for like any other value. A repr escapes its
+        # breaks, but nothing stops a driver's own type from printing several lines.
+        head, truncated = _split_first_line(display_text(obj), truncate_multiline)
+        return _mark_truncated(Text.from_markup(head), max_width) if truncated else head
 
     else:
         return cast(RenderableType, obj)

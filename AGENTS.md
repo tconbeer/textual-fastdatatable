@@ -94,7 +94,9 @@ measure a value when:
   regex.
 
 A row is one line tall, so a multi-line value renders — and is measured — as its first
-line plus `format.MULTILINE_MARKER`. `_measure_cells` gets that width from the first
+line plus `format.MULTILINE_MARKER`; `cell_formatter` clips every value that way, the
+text it gets from `display_text` included, since only a string's own breaks are visible
+to the branch that handles strings. `_measure_cells` gets that width from the first
 break's position (`pc.find_substring`, which for an all-ASCII value *is* a width), but
 runs the kernel only for a column `_line_breaks_present` found a break in: the byte scan
 costs ~4ms per million values against the kernel's ~30ms, and almost no column has a
