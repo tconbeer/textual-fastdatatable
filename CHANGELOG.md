@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.19.1] - 2026-08-31
+
 - Columns of Arrow extension types (like the `arrow.uuid` that pyarrow infers for
   `uuid.UUID` values) no longer crash when their widths are measured; they are measured
   as the text a cell shows for them
@@ -246,7 +248,8 @@ All notable changes to this project will be documented in this file.
 
 - Initial release. Adds DataTable and ArrowBackend, which is 1000x faster for datasets of 500k records or more.
 
-[unreleased]: https://github.com/tconbeer/textual-fastdatatable/compare/0.19.0...HEAD
+[unreleased]: https://github.com/tconbeer/textual-fastdatatable/compare/0.19.1...HEAD
+[0.19.1]: https://github.com/tconbeer/textual-fastdatatable/compare/0.19.0...0.19.1
 [0.19.0]: https://github.com/tconbeer/textual-fastdatatable/compare/0.18.0...0.19.0
 [0.18.0]: https://github.com/tconbeer/textual-fastdatatable/compare/0.17.1...0.18.0
 [0.17.1]: https://github.com/tconbeer/textual-fastdatatable/compare/0.17.0...0.17.1
