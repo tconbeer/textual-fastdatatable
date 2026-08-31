@@ -1,5 +1,12 @@
 from __future__ import annotations
 
+import uuid
+from collections.abc import Sequence
+from datetime import date
+from typing import Any
+
+import polars as pl
+import pyarrow as pa
 import pytest
 
 from textual_fastdatatable.backend import (
@@ -8,6 +15,23 @@ from textual_fastdatatable.backend import (
     DataTableBackend,
     PolarsBackend,
 )
+from textual_fastdatatable.format import measure_width
+
+UUIDS = [uuid.UUID(int=i) for i in range(3)]
+
+
+class _MultiLine:
+    """A driver's own type, of the kind that prints more lines than a row shows."""
+
+    def __str__(self) -> str:
+        return "first line\nsecond line is longer"
+
+
+def _array(values: Sequence[Any], type: pa.DataType | None = None) -> pa.Array:  # noqa: A002
+    """`pa.array`, narrowed: these arrays are never chunked."""
+    array = pa.array(values, type=type)
+    assert isinstance(array, pa.Array)
+    return array
 
 
 def test_column_content_widths(backend: DataTableBackend) -> None:
@@ -250,3 +274,215 @@ def test_sort(backend: DataTableBackend) -> None:
 
     backend.sort(by=[("first column", "ascending")])
     assert backend.data.equals(original_table)
+
+
+def _uuid_array() -> pa.Array:
+    """A column of the canonical `arrow.uuid` extension type, stored as its bytes."""
+    storage = _array([value.bytes for value in UUIDS], type=pa.binary(16))
+    return pa.ExtensionArray.from_storage(pa.uuid(), storage)
+
+
+@pytest.mark.parametrize(
+    "array,expected_width",
+    [
+        # the storage of an arrow.uuid is 16 bytes; a cell shows its 36 characters
+        (_uuid_array(), 36),
+        # an arrow.json is its storage's string, and is measured as one
+        pytest.param(
+            pa.ExtensionArray.from_storage(pa.json_(), _array(['{"a": 日}']))
+            if hasattr(pa, "json_")
+            else None,
+            9,  # the wide character is two cells, as it is in a string column
+            marks=pytest.mark.skipif(
+                not hasattr(pa, "json_"), reason="pyarrow<19 has no arrow.json"
+            ),
+        ),
+        # an arrow.bool8 is stored as an int8, and rendered as a bool: "✓ True "
+        (
+            pa.ExtensionArray.from_storage(pa.bool8(), _array([1, 0], type=pa.int8())),
+            7,
+        ),
+        # an extension type nobody has a Python class for -- a geometry from a
+        # database driver, say -- shows the preview its storage bytes render as
+        (
+            pa.ExtensionArray.from_storage(
+                pa.opaque(pa.binary(), "GEOMETRY", "duckdb"),
+                _array([b"\x01\x02"], type=pa.binary()),
+            ),
+            len(r"b'\x01\x02'"),
+        ),
+        # binary is not text either, however castable to it Arrow considers it
+        (_array([b"\x00\x01\xff", b"hello", None], type=pa.binary()), 15),
+        (_array([b"\xfe\xed"], type=pa.large_binary()), 11),
+        # a preview renders literally, markup in the bytes and all, so it is
+        # measured that way too: as markup, `b'[red]x'` would be four cells
+        (_array([b"[red]x"], type=pa.binary()), len("b'[red]x'")),
+        (_array([b"\x00\xff"] * 2, type=pa.binary(2)), 11),
+        # a long value shows a bounded preview, which is wider than the bytes it
+        # previews: 32 bytes of \xNN escapes, plus the count of the rest
+        (
+            _array([bytes(64)], type=pa.binary()),
+            len(r"b'" + r"\x00" * 32 + r"'") + 12,
+        ),
+        # a dictionary is only as good as its values: Arrow renders a boolean as
+        # `true`, where the widget shows `✓ True`
+        (_array([True, False]).dictionary_encode(), 7),
+        # a nested value is measured as Python prints it, which is how it renders
+        (_array([[1, 2, 3], [4]], type=pa.list_(pa.int64())), 9),
+        # a tag inside one renders as itself, so it is measured as itself
+        (_array([["[red]x"]], type=pa.list_(pa.string())), len("['[red]x']")),
+        (
+            _array(
+                [{"a": 1, "b": "x"}],
+                type=pa.struct([("a", pa.int64()), ("b", pa.string())]),
+            ),
+            18,
+        ),
+        # a string is text, and stays on Arrow's own fast path
+        (_array(["日本語", "a"]), 6),
+        (_array(["日本語", "a"]).dictionary_encode(), 6),
+    ],
+)
+def test_arrow_columns_are_measured_as_the_widget_renders_them(
+    array: pa.Array, expected_width: int
+) -> None:
+    """A column is as wide as its values render, whatever Arrow makes of its type.
+
+    Arrow's cast to string reinterprets a binary type's bytes rather than failing."""
+    backend = ArrowBackend(pa.table({"one": array}))
+
+    assert backend.column_content_widths == [expected_width]
+    # ... which is the width of the widest cell, as the widget renders it
+    assert expected_width == max(
+        measure_width(backend.get_cell_at(row, 0)) for row in range(backend.row_count)
+    )
+
+
+def test_uuid_columns_do_not_decode_their_storage_as_utf8() -> None:
+    """Regression test for #176: measuring an arrow.uuid column raised.
+
+    The cast reinterpreted the uuid's 16 bytes, and measuring decoded them as UTF-8."""
+    backend = ArrowBackend(pa.table({"u": _uuid_array()}))
+
+    assert backend.column_content_widths == [36]
+    assert backend.get_cell_at(0, 0) == UUIDS[0]
+    assert backend.get_row_at(1) == [UUIDS[1]]
+    assert backend.get_column_at(0) == UUIDS
+
+
+@pytest.mark.parametrize(
+    "series,expected_width",
+    [
+        # polars raises rather than cast these to text, or renders them its own way
+        (pl.Series([b"\x00\x01\xff", b"hello", None]), 15),
+        (pl.Series([b"[red]x"]), len("b'[red]x'")),
+        (pl.Series([[1, 2, 3], [4]]), 9),
+        (pl.Series([[1, 2]], dtype=pl.Array(pl.Int64, 2)), 6),
+        (pl.Series([{"a": 1, "b": "x"}]), 18),
+        (pl.Series([date(2024, 1, 1)], dtype=pl.Object), 10),
+        # a value that prints more lines than a row shows is measured as one line
+        (pl.Series([_MultiLine()], dtype=pl.Object), len("first line") + 2),
+        (pl.Series([None, None]), 0),
+        # text, on the other hand, polars measures itself
+        (pl.Series(["日本語", "a"]), 6),
+        (pl.Series(["日本語", "a"], dtype=pl.Enum(["日本語", "a"])), 6),
+        (pl.Series(["日本語", "a"], dtype=pl.Categorical), 6),
+    ],
+)
+def test_polars_columns_are_measured_as_the_widget_renders_them(
+    series: pl.Series, expected_width: int
+) -> None:
+    """The same, for the types polars cannot cast to the text a cell shows."""
+    backend = PolarsBackend.from_dataframe(pl.DataFrame({"one": series}))
+
+    assert backend.column_content_widths == [expected_width]
+    assert expected_width == max(
+        measure_width(backend.get_cell_at(row, 0)) for row in range(backend.row_count)
+    )
+
+
+@pytest.mark.parametrize(
+    "value,expected",
+    [
+        ([1, 2, 3], [1, 2, 3]),
+        ({"a": 1}, {"a": 1}),
+        (b"\x00", b"\x00"),
+    ],
+)
+def test_polars_cells_are_python_values(value: Any, expected: Any) -> None:
+    """A nested cell is a python value, the way the Arrow backend gives it.
+
+    `series[i]` hands back a Series, which renders as its own multi-line repr."""
+    backend = PolarsBackend.from_dataframe(pl.DataFrame({"one": [value]}))
+
+    assert backend.get_cell_at(0, 0) == expected
+    assert backend.get_column_at(0) == [expected]
+    assert backend.get_row_at(0) == [expected]
+
+
+def test_all_null_extension_columns_measure_nothing() -> None:
+    """Every value renders as the widget's null_rep, which the widget measures."""
+    storage = _array([None, None], type=pa.binary(16))
+    table = pa.table({"u": pa.ExtensionArray.from_storage(pa.uuid(), storage)})
+
+    assert ArrowBackend(table).column_content_widths == [0]
+
+
+@pytest.mark.parametrize(
+    "array,converted",
+    [
+        # arrow.uuid renders every value 36 characters wide, so one is measured
+        (_uuid_array(), 1),
+        # an arrow.json is its storage's string: Arrow measures the column itself
+        (
+            pa.ExtensionArray.from_storage(pa.json_(), _array(['{"a": 1}'] * 3))
+            if hasattr(pa, "json_")
+            else _uuid_array(),
+            0,
+        ),
+        # nothing is known about a struct's values, so every one is converted
+        (
+            _array([{"a": 1}] * 3, type=pa.struct([("a", pa.int64())])),
+            3,
+        ),
+    ],
+)
+def test_extension_columns_are_not_converted_value_by_value(
+    monkeypatch: pytest.MonkeyPatch, array: pa.Array, converted: int
+) -> None:
+    """What an extension type says about its values is what saves the conversion.
+
+    A column of a million uuids measured every one of them before this counted.
+    """
+    from textual_fastdatatable import format as formatter
+
+    calls = 0
+    display_text = formatter.display_text
+
+    def counted(*args: Any, **kwargs: Any) -> str:
+        nonlocal calls
+        calls += 1
+        return display_text(*args, **kwargs)
+
+    monkeypatch.setattr(formatter, "display_text", counted)
+
+    assert ArrowBackend(pa.table({"one": array})).column_content_widths
+    assert calls == converted
+
+
+@pytest.mark.parametrize("render_markup,expected_width", [(True, 3), (False, 11)])
+def test_a_value_measured_in_python_follows_render_markup(
+    render_markup: bool, expected_width: int
+) -> None:
+    """A string that reaches the value-by-value path is measured as it renders.
+
+    It is the only value type the setting reaches, and it arrives as a bare object."""
+    backend = PolarsBackend.from_dataframe(
+        pl.DataFrame({"one": pl.Series(["[red]abc[/]"], dtype=pl.Object)})
+    )
+    backend.render_markup = render_markup
+
+    assert backend.column_content_widths == [expected_width]
+    assert expected_width == measure_width(
+        backend.get_cell_at(0, 0), render_markup=render_markup
+    )

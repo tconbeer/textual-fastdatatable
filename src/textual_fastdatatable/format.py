@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import uuid
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 from itertools import chain
@@ -32,6 +33,13 @@ MULTILINE_MARKER_STYLE = "dim italic"
 MULTILINE_MARKER_WIDTH = 2
 """Cells `MULTILINE_MARKER` occupies. Checked by test_format."""
 
+BINARY_PREVIEW_BYTES = 32
+"""Bytes of a binary value a cell shows before summarizing the rest of them."""
+
+FIXED_WIDTH_TYPES = (bool, uuid.UUID)
+"""Types whose every value renders the same width: a uuid is 36 characters and a
+bool is 7, so a column of them is measured from one value, like a temporal type."""
+
 LINE_BREAK_PROG = re.compile(r"[\r\n]")
 """Where a value's first line ends.
 
@@ -49,15 +57,24 @@ ConsoleOptions on every access, which is about half the cost of measuring a shor
 value; this console has a fixed width and is never resized, so its options are too."""
 
 
+def _escape(text: str) -> str:
+    """`rich.markup.escape`, skipped for the values it would leave alone.
+
+    Testing for the two things it acts on costs a fraction of the substitution."""
+    return escape(text) if "[" in text or text.endswith("\\") else text
+
+
 def has_line_break(obj: object) -> bool:
     """Whether a cell can only show part of this value.
 
-    Only strings and `Text` ever can; every other type `cell_formatter` handles
-    renders on one line by construction.
+    Asked of the text the value renders as, since a type of a driver's own prints
+    whatever it likes -- and a cell showing one line of it owes the reader a tooltip.
     """
     if isinstance(obj, Text):
         obj = obj.plain
-    return isinstance(obj, str) and LINE_BREAK_PROG.search(obj) is not None
+    elif not isinstance(obj, str):
+        obj = display_text(obj)
+    return LINE_BREAK_PROG.search(obj) is not None
 
 
 def _split_first_line(value: str, truncate: bool) -> tuple[str, bool]:
@@ -125,6 +142,67 @@ def measure_width(
     ).maximum
 
 
+def display_text(
+    obj: object, col: Column | None = None, render_markup: bool = True
+) -> str:
+    """The markup a cell shows for `obj`, without the alignment `cell_formatter` adds.
+
+    Always markup: what renders literally is escaped, as rich parses every string."""
+    if obj is None:
+        # a null renders as the widget's null_rep, which is the widget's to measure
+        return ""
+
+    elif isinstance(obj, str):
+        return obj if render_markup else _escape(obj)
+
+    elif isinstance(obj, (bytes, bytearray, memoryview)):
+        # binary values (e.g. varbinary columns) can contain sequences like
+        # [/...] that Rich would try to parse as markup; show an escaped,
+        # bounded preview instead. See tconbeer/harlequin#974.
+        data = bytes(obj)
+        preview = repr(data[:BINARY_PREVIEW_BYTES])
+        if len(data) > BINARY_PREVIEW_BYTES:
+            preview = f"{preview} (+{len(data) - BINARY_PREVIEW_BYTES} bytes)"
+        return _escape(preview)
+
+    elif isinstance(obj, Text):
+        # a Text renders literally, carrying its own styles, which take no cells
+        return _escape(obj.plain)
+
+    elif isinstance(obj, bool):
+        return f"[dim]{'✓' if obj else 'X'}[/] {obj}{' ' if obj else ''}"
+
+    elif isinstance(obj, (float, Decimal)):
+        return f"{obj:n}"
+
+    elif isinstance(obj, int):
+        # no separators in ID fields
+        return str(obj) if col is not None and col.is_id else f"{obj:n}"
+
+    elif isinstance(obj, (datetime, time)):
+        formatted = obj.isoformat(timespec="milliseconds").replace("+00:00", "Z")
+        if obj in (datetime.max, datetime.min):
+            sign = "∞ " if obj == datetime.max else "-∞ "
+            return f"[bold]{sign}[/][dim]{formatted}[/]"
+        return formatted
+
+    elif isinstance(obj, date):
+        if obj in (date.max, date.min):
+            sign = "∞ " if obj == date.max else "-∞ "
+            return f"[bold]{sign}[/][dim]{obj.isoformat()}[/]"
+        return obj.isoformat()
+
+    elif isinstance(obj, timedelta):
+        return str(obj)
+
+    else:
+        # a uuid, a list, a struct's dict, a driver's own type: whatever it prints as,
+        # escaped. The brackets in a repr are the repr's, so a tag rich finds in one
+        # was never markup: rendering it eats the structure around it, and an
+        # unbalanced one raises. A string is the only value markup is parsed in.
+        return _escape(str(obj))
+
+
 def cell_formatter(
     obj: object,
     null_rep: Text,
@@ -159,78 +237,36 @@ def cell_formatter(
             rich_text = Text.from_markup(head)
         except MarkupError:
             # not markup after all, so fall through to rendering it literally
-            return _mark_truncated(Text(head), max_width) if truncated else escape(head)
+            return (
+                _mark_truncated(Text(head), max_width) if truncated else _escape(head)
+            )
         return _mark_truncated(rich_text, max_width) if truncated else rich_text
 
     elif isinstance(obj, str):
         head, truncated = _split_first_line(obj, truncate_multiline)
         # `Text` renders literally, so it needs no escaping; a marked value has to
         # be one anyway, to carry the marker's style
-        return _mark_truncated(Text(head), max_width) if truncated else escape(head)
+        return _mark_truncated(Text(head), max_width) if truncated else _escape(head)
 
     elif isinstance(obj, bool):
-        return Align(
-            f"[dim]{'✓' if obj else 'X'}[/] {obj}{' ' if obj else ''}",
-            style="bold" if obj else "",
-            align="right",
-        )
+        return Align(display_text(obj), style="bold" if obj else "", align="right")
 
-    elif isinstance(obj, (float, Decimal)):
-        return Align(f"{obj:n}", align="right")
+    elif isinstance(obj, (float, Decimal, int)):
+        return Align(display_text(obj, col), align="right")
 
-    elif isinstance(obj, int):
-        if col is not None and col.is_id:
-            # no separators in ID fields
-            return Align(str(obj), align="right")
-        else:
-            return Align(f"{obj:n}", align="right")
-
-    elif isinstance(obj, (datetime, time)):
-
-        def _fmt_datetime(obj: datetime | time) -> str:
-            return obj.isoformat(timespec="milliseconds").replace("+00:00", "Z")
-
-        if obj in (datetime.max, datetime.min):
-            return Align(
-                (
-                    f"[bold]{'∞ ' if obj == datetime.max else '-∞ '}[/]"
-                    f"[dim]{_fmt_datetime(obj)}[/]"
-                ),
-                align="right",
-            )
-
-        return Align(_fmt_datetime(obj), align="right")
-
-    elif isinstance(obj, date):
-        if obj in (date.max, date.min):
-            return Align(
-                (
-                    f"[bold]{'∞ ' if obj == date.max else '-∞ '}[/]"
-                    f"[dim]{obj.isoformat()}[/]"
-                ),
-                align="right",
-            )
-
-        return Align(obj.isoformat(), align="right")
-
-    elif isinstance(obj, timedelta):
-        return Align(str(obj), align="right")
-
-    elif isinstance(obj, (bytes, bytearray, memoryview)):
-        # binary values (e.g. varbinary columns) can contain sequences like
-        # [/...] that Rich would try to parse as markup; show an escaped,
-        # truncated preview instead. See tconbeer/harlequin#974.
-        data = bytes(obj)
-        preview = repr(data[:32])
-        if len(data) > 32:
-            preview = f"{preview} (+{len(data) - 32} bytes)"
-        return escape(preview)
+    elif isinstance(obj, (datetime, time, date, timedelta)):
+        return Align(display_text(obj), align="right")
 
     elif isinstance(obj, Text):
         return truncate_to_first_line(obj, max_width) if truncate_multiline else obj
 
     elif not is_renderable(obj):
-        return str(obj)
+        # binary and everything else with no renderable of its own -- a uuid, a
+        # list, a struct's dict -- as the text `display_text` gives it, clipped to
+        # the one line a row has room for like any other value. A repr escapes its
+        # breaks, but nothing stops a driver's own type from printing several lines.
+        head, truncated = _split_first_line(display_text(obj), truncate_multiline)
+        return _mark_truncated(Text.from_markup(head), max_width) if truncated else head
 
     else:
         return cast(RenderableType, obj)

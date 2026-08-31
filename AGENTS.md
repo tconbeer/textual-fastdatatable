@@ -76,7 +76,7 @@ reporting the full input — the widget shows both counts.
 `column_content_widths` is the hot path for first paint. Each backend computes it with
 vectorized column operations rather than per-cell Python (`_measure`): booleans and nulls
 are constants, numerics measure only min/max, temporals measure one non-null value, and
-everything else casts the whole column to string and takes the widest result of
+everything else becomes the text a cell shows for it and takes the widest result of
 `_measure_strings`. That runs `_measure_cells` as an Arrow scalar UDF, which measures an
 array in cells rather than characters. Arrow measures the values it can by itself, and
 hands the rest to `backend._measure_width` — a lazy wrapper around
@@ -94,7 +94,9 @@ measure a value when:
   regex.
 
 A row is one line tall, so a multi-line value renders — and is measured — as its first
-line plus `format.MULTILINE_MARKER`. `_measure_cells` gets that width from the first
+line plus `format.MULTILINE_MARKER`; `cell_formatter` clips every value that way, the
+text it gets from `display_text` included, since only a string's own breaks are visible
+to the branch that handles strings. `_measure_cells` gets that width from the first
 break's position (`pc.find_substring`, which for an all-ASCII value *is* a width), but
 runs the kernel only for a column `_line_breaks_present` found a break in: the byte scan
 costs ~4ms per million values against the kernel's ~30ms, and almost no column has a
@@ -110,8 +112,39 @@ Because `measure_width` renders the value, it has to be told whether the widget 
 markup; `_measure_cells` is registered as two UDFs per type, `_cell_widths` and
 `_cell_widths_no_markup`, since a UDF is registered under its name for the life of the
 process. The result
-is cached on the backend and cleared by `_reset_content_widths()` on mutation. The Arrow
-path registers another scalar UDF as a fallback for types Arrow can't cast to string.
+is cached on the backend and cleared by `_reset_content_widths()` on mutation.
+
+Only a column already stored as the characters it displays can be turned into that text
+by Arrow itself — `_arrow_casts_to_display_text`: the string types, and a dictionary of
+them. **`arr.cast(pa.string())` is not a test of that**, because it succeeds for types it
+reinterprets rather than renders: a binary type, and an extension type over one, come
+back as their storage bytes, so an `arrow.uuid`'s 16 bytes became 16 bytes of would-be
+text (rarely valid UTF-8, which is how #176 crashed) rather than the 36 characters the
+widget draws. So every other type — binary, extension, nested, a dictionary of anything
+but strings, whatever a driver invents next — is converted value by value with
+`format.display_text`, which is what `cell_formatter` renders those values as; polars is
+the same, and cannot cast a binary or nested column at all. `display_text` is told what
+the table renders strings as — the one value type that setting changes — and escapes a
+string it will render literally, so what comes back is markup either way, and is
+measured with `render_markup=True`. `_measure_display_text`
+walks the column `_VALUE_BLOCK_SIZE` values at a time and keeps the widest, so a large
+column never holds a Python object per row — the bound the scalar UDF this replaced got
+from Arrow's chunking. This path costs 1.5–5s per million values, against ~20ms for a
+column Arrow can cast, so what belongs on the fast side of
+`_arrow_casts_to_display_text` is a performance question as much as a correctness one.
+
+An extension type gets a look before any of that, because it is a storage type with a
+meaning attached and only the type says which of the two a cell shows. `arrow.json`,
+`arrow.opaque` and every type this pyarrow has no class for leave the value as the
+storage's — pyarrow's own `ExtensionScalar.as_py` — so `_measure` recurses into
+`_extension_storage` and the column is measured on whichever path its storage belongs
+to (a json column is measured as the strings it is). `arrow.uuid` and `arrow.bool8`
+override `as_py`, and their values render at a width their Python type fixes
+(`format.FIXED_WIDTH_TYPES`), so one value measures the column, as for a temporal type.
+**The test is the scalar class, never whether the value equals its storage**:
+`arrow.bool8`'s `True` equals its storage's `1` and renders `✓ True` against `1`. A
+pyarrow that gives one of these a class of its own only costs a measurement; it cannot
+mismeasure, which is what makes the rule safe for extension types nobody has seen yet.
 
 Every UDF is registered through `_register_udf`, which registers a name at most once:
 `pc.register_scalar_function` raises for a name that is taken **and drops a reference to
@@ -142,6 +175,14 @@ regex so `format.cell_formatter` omits thousands separators for those integers.
 numbers/dates, locale-formatting via `{obj:n}` (callers should `locale.setlocale()` first),
 escaping or parsing markup depending on `render_markup`, and rendering `datetime.max`/
 `date.max` (produced by `_handle_overflow` when Arrow values overflow Python types) as ∞.
+Every value it does not hand to rich as a string, a `Text` or a renderable of its own
+gets its text from `format.display_text` — bytes as a bounded escaped preview, anything
+else (a uuid, a list, a struct's dict) as an escaped `str(obj)`: the brackets in a repr
+are the repr's, so a tag rich finds in one was never markup, and rendering it eats the
+structure around it (or raises, for an unbalanced tag). A string is the only value
+markup is parsed in, and `render_markup` says whether it is. That is the one place a value
+becomes text, so that the backends measure what the widget draws;
+`test_format.test_display_text_measures_as_the_cell_it_describes` holds the two in step.
 
 The render path is `render_line` → `_render_line_in_row` → `_render_cell`, each backed by
 an `LRUCache` (`_line_cache`, `_row_render_cache`, `_cell_render_cache`, `_tooltip_cache`).

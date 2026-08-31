@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+import uuid
+from datetime import date, datetime, time, timedelta, timezone
+from decimal import Decimal
+from typing import Any
+
 import pytest
 from rich.console import Console
 from rich.text import Text
@@ -9,11 +14,20 @@ from textual_fastdatatable.format import (
     MULTILINE_MARKER,
     MULTILINE_MARKER_WIDTH,
     cell_formatter,
+    display_text,
+    has_line_break,
     measure_width,
     truncate_to_first_line,
 )
 
 NULL = Text("")
+
+
+class MultiLine:
+    """A driver's own type, of the kind that prints more lines than a row shows."""
+
+    def __str__(self) -> str:
+        return "first line\nsecond line is longer"
 
 
 def _can_render(renderable: object) -> bool:
@@ -232,3 +246,75 @@ def test_a_marked_value_is_not_double_escaped() -> None:
 
     assert _plain(result) == f"a [red]b{MULTILINE_MARKER}"
     assert "\\" not in _plain(result)
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        None,
+        True,
+        False,
+        1234567,
+        1.5,
+        Decimal("1.5"),
+        date(2024, 1, 1),
+        date.max,
+        datetime(2024, 1, 1, 12, 30, tzinfo=timezone.utc),
+        datetime.max,
+        time(1, 2, 3),
+        timedelta(seconds=90),
+        b"abc",
+        b"[red]not markup[/]",  # a preview of markup-hostile bytes renders literally
+        bytes(range(64)),  # a preview of the first 32, and a count of the rest
+        bytearray(b"a"),
+        memoryview(b"a"),
+        uuid.UUID(int=1),
+        [1, 2, 3],
+        {"a": 1},
+        ["[red]x"],  # the brackets in a repr are the repr's, not markup
+        {"a": "[/]"},  # ... and an unbalanced tag rich would refuse
+        "plain",
+        "[red]markup[/]",
+        "a\nb",  # only the first line and the marker are rendered, so measured
+        "日本語",
+        Text("a[b"),
+    ],
+)
+@pytest.mark.parametrize("render_markup", [True, False])
+def test_display_text_measures_as_the_cell_it_describes(
+    value: Any, render_markup: bool
+) -> None:
+    """A value's text renders at the width the value itself renders at.
+
+    The width the backends measure is the width the widget draws only if these agree."""
+    as_text = display_text(value, render_markup=render_markup)
+
+    assert measure_width(as_text, render_markup=True) == measure_width(
+        value, render_markup=render_markup
+    )
+
+
+@pytest.mark.parametrize("value", [["[/]"], {"a": "[/]"}, ("[bold]",)])
+def test_markup_in_a_repr_is_not_markup(value: object) -> None:
+    """A tag inside a list or a struct renders as itself, as it does inside bytes.
+
+    Rendering it eats the structure around it, and an unbalanced one raised."""
+    rendered = cell_formatter(value, null_rep=NULL)
+    assert isinstance(rendered, str)
+    assert Text.from_markup(rendered).plain == str(value)
+
+
+def test_a_multi_line_value_of_any_type_is_clipped_to_one_line() -> None:
+    """A row is one line tall whatever the value is, so every value is clipped to one.
+
+    A repr escapes its breaks; a type of a driver's own prints whatever it likes."""
+    rendered = cell_formatter(MultiLine(), null_rep=NULL)
+
+    assert isinstance(rendered, Text)
+    assert rendered.plain == f"first line{MULTILINE_MARKER}"
+    assert measure_width(MultiLine()) == len("first line") + MULTILINE_MARKER_WIDTH
+    # ... and the reader is told there is more, by a tooltip that shows all of it
+    assert has_line_break(MultiLine())
+    assert cell_formatter(MultiLine(), null_rep=NULL, truncate_multiline=False) == str(
+        MultiLine()
+    )

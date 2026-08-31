@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import sys
 from abc import ABC, abstractmethod
-from collections.abc import Callable, Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from contextlib import suppress
 from datetime import date, datetime
 from pathlib import Path
-from typing import Any, Generic, Literal, TypeVar
+from typing import Any, Generic, Literal, TypeVar, cast
 
 import pyarrow as pa
 import pyarrow.compute as pc
@@ -234,6 +234,65 @@ def _measure_width(value: Any, render_markup: bool = True) -> int:
     from textual_fastdatatable.format import measure_width
 
     return measure_width(value, render_markup=render_markup)
+
+
+_VALUE_BLOCK_SIZE = 100_000
+"""Values `_measure_display_text` converts to Python at a time.
+
+A block, not the column, so measuring never holds a Python object per row."""
+
+
+def _measure_display_text(blocks: Iterable[list[Any]], render_markup: bool) -> int:
+    """The widest rendering of a column Arrow cannot render as text, block by block.
+
+    `render_markup` is the table's, and reaches the one value type it changes: a
+    string, which renders literally without it, and so is escaped to be measured."""
+    from textual_fastdatatable.format import display_text
+
+    widest = 0
+    for values in blocks:
+        strings = pa.array(
+            [display_text(value, render_markup=render_markup) for value in values],
+            type=pa.string(),
+        )
+        # what `display_text` returns is markup, whatever it was told about strings
+        widest = max(widest, _measure_strings(strings, render_markup=True) or 0)
+    return widest
+
+
+def _extension_storage(arr: pa._PandasConvertible) -> pa._PandasConvertible:
+    """The values an extension array is stored as, chunk for chunk."""
+    storage_type = cast(pa.BaseExtensionType, arr.type).storage_type
+    if isinstance(arr, pa.ChunkedArray):
+        chunks = [cast(pa.ExtensionArray, chunk).storage for chunk in arr.chunks]
+        return pa.chunked_array(chunks, type=storage_type)
+    return cast(pa.ExtensionArray, arr).storage
+
+
+def _extension_value_is_its_storage(scalar: pa.Scalar) -> bool:
+    """Whether an extension type leaves its values as the storage's values.
+
+    True unless the scalar class overrides `as_py`, which is not the same as the two
+    comparing equal: `arrow.bool8`'s `True` equals its storage's `1` and renders `✓`."""
+    return type(scalar).as_py is pa.ExtensionScalar.as_py
+
+
+def _renders_at_a_fixed_width(value: Any) -> bool:
+    """Whether every value of this one's type renders as wide as it does."""
+    from textual_fastdatatable.format import FIXED_WIDTH_TYPES
+
+    return isinstance(value, FIXED_WIDTH_TYPES)
+
+
+def _arrow_casts_to_display_text(dtype: pa.DataType) -> bool:
+    """Whether Arrow's cast to string yields the text a cell shows for this type.
+
+    True only for the types stored as the characters they display; see AGENTS.md."""
+    if pt.is_dictionary(dtype):
+        return _arrow_casts_to_display_text(dtype.value_type)
+    return bool(
+        pt.is_string(dtype) or pt.is_large_string(dtype) or pt.is_string_view(dtype)
+    )
 
 
 def create_backend(
@@ -781,7 +840,36 @@ class ArrowBackend(DataTableBackend[pa.Table]):
     def _reset_content_widths(self) -> None:
         self._column_content_widths = []
 
+    def _value_blocks(self, arr: pa._PandasConvertible) -> Iterator[list[Any]]:
+        """The column's values as Python, `_VALUE_BLOCK_SIZE` of them at a time."""
+        for offset in range(0, len(arr), _VALUE_BLOCK_SIZE):
+            block = arr.slice(offset, _VALUE_BLOCK_SIZE)
+            try:
+                yield block.to_pylist()
+            except OverflowError:
+                yield [self._handle_overflow(scalar) for scalar in block]
+
     def _measure(self, arr: pa._PandasConvertible) -> int:
+        # an extension type is a storage type with a meaning attached, and which of
+        # the two a cell shows is the type's to say. Where the meaning is only an
+        # annotation -- `arrow.json`, `arrow.opaque`, and any type this pyarrow has
+        # no class for -- the value is the storage's value, so the storage is what
+        # gets measured, on whichever path suits it. Where it is not, the value is a
+        # Python object of its own, and `arrow.uuid`'s and `arrow.bool8`'s render at
+        # a width their type fixes, so one value measures the column. Anything else
+        # falls through to the value-by-value path below. A pyarrow that gives one of
+        # these a class of its own only costs a measurement; it cannot mismeasure.
+        if isinstance(arr.type, pa.BaseExtensionType):
+            present = arr.drop_null()
+            if not len(present):
+                return 0  # every value is null, and a null renders as the null_rep
+            scalar = present[0]
+            if _extension_value_is_its_storage(scalar):
+                return self._measure(_extension_storage(arr))
+            value = scalar.as_py()
+            if _renders_at_a_fixed_width(value):
+                return _measure_width(value)
+
         # with some types we can measure the width more efficiently
         if pt.is_boolean(arr.type):
             return 7
@@ -812,32 +900,20 @@ class ArrowBackend(DataTableBackend[pa.Table]):
                 # valid temporal types all have the same width for their type
                 return _measure_width(value)
 
-        # for everything else, we need to compute it
-        # First, cast the data to strings
-        try:
-            arr = arr.cast(
-                pa.string(),
-                safe=False,
-            )
-        except (pal.ArrowNotImplementedError, pal.ArrowInvalid):
-            # some types can't be casted to strings natively by arrow, but they
-            # can be casted to strings by python. The arrow way is faster, but
-            # if it fails, register a python udf and try again
-            def py_str(_ctx: Any, arr: pa.Array) -> str | pa.Array | pa.ChunkedArray:
-                return pa.array([str(el) for el in arr], type=pa.string())
+        # everything else is measured as the text it renders as. A column Arrow
+        # stores as text becomes that text in one cast, and is measured as the
+        # widget renders a string: as markup, or literally.
+        if _arrow_casts_to_display_text(arr.type):
+            arr = arr.cast(pa.string(), safe=False)
+            # Markup is not stripped first: measuring parses it, the way the
+            # widget renders it.
+            return _measure_strings(arr.fill_null(""), render_markup=self.render_markup)
 
-            udf_name = _register_udf(
-                f"tfdt_pystr_{arr.type}",
-                py_str,
-                in_type=arr.type,
-                out_type=pa.string(),
-                summary="built-in str",
-            )
-            arr = pc.call_function(udf_name, [arr])
-
-        # next, measure the rendered width of each cell, then take the max. Markup
-        # is not stripped first: measuring parses it, the way the widget renders it.
-        return _measure_strings(arr.fill_null(""), render_markup=self.render_markup)
+        # every other type -- binary, extension, nested, a dictionary of anything
+        # but strings -- is converted value by value, the way the widget converts
+        # it, since Arrow's own text for it is not what a cell shows (or, for the
+        # types it cannot cast at all, does not exist).
+        return _measure_display_text(self._value_blocks(arr), self.render_markup)
 
 
 if _HAS_POLARS:
@@ -948,7 +1024,9 @@ if _HAS_POLARS:
                     f"Cannot get column={column_index} in table with {len(self.data)} "
                     f"rows and {len(self.data.columns)} cols."
                 )
-            return list(self.data.to_series(column_index))
+            # to_list(), not list(): a nested value is a python list, the way the
+            # Arrow backend and `get_row_at` give it, rather than a polars Series
+            return self.data.to_series(column_index).to_list()
 
         def get_cell_at(self, row_index: int, column_index: int) -> Any:
             if (
@@ -961,7 +1039,9 @@ if _HAS_POLARS:
                     f"Cannot get cell at row={row_index} col={column_index} in table "
                     f"with {len(self.data)} rows and {len(self.data.columns)} cols"
                 )
-            return self.data.to_series(column_index)[row_index]
+            # sliced first, so that a nested value is converted -- to a python list,
+            # as `get_row_at` gives it -- without converting the whole column
+            return self.data.to_series(column_index).slice(row_index, 1).to_list()[0]
 
         def drop_row(self, row_index: int) -> None:
             if row_index < 0 or row_index >= self.row_count:
@@ -1047,16 +1127,27 @@ if _HAS_POLARS:
             if dtype.is_(pld.Boolean()):
                 return 7
 
-            # for everything else, we need to compute it
+            # everything else is measured as the text it renders as, and only the
+            # types polars stores as text can be cast to that text: it raises for a
+            # binary or a nested column, and has its own idea of a struct.
+            if dtype == pld.String() or isinstance(dtype, pld.Enum):
+                arr = arr.cast(
+                    pl.Utf8(),
+                    strict=False,
+                )
 
-            arr = arr.cast(
-                pl.Utf8(),
-                strict=False,
-            )
+                # measured through Arrow, so that both backends measure the same way
+                return _measure_strings(
+                    arr.fill_null("<null>").to_arrow(), render_markup=self.render_markup
+                )
 
-            # measured through Arrow, so that both backends measure the same way
-            return _measure_strings(
-                arr.fill_null("<null>").to_arrow(), render_markup=self.render_markup
+            # the rest go to Python, value by value, the way the widget converts them
+            return _measure_display_text(
+                (
+                    arr.slice(offset, _VALUE_BLOCK_SIZE).to_list()
+                    for offset in range(0, len(arr), _VALUE_BLOCK_SIZE)
+                ),
+                self.render_markup,
             )
 
         def sort(
