@@ -194,8 +194,11 @@ def display_text(
         return str(obj)
 
     else:
-        # a uuid, a list, a struct's dict, a driver's own type: whatever it prints as
-        return str(obj)
+        # a uuid, a list, a struct's dict, a driver's own type: whatever it prints as,
+        # escaped. The brackets in a repr are the repr's, so a tag rich finds in one
+        # was never markup: rendering it eats the structure around it, and an
+        # unbalanced one raises. A string is the only value markup is parsed in.
+        return _escape(str(obj))
 
 
 def cell_formatter(

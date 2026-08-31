@@ -322,6 +322,8 @@ def _uuid_array() -> pa.Array:
         (_array([True, False]).dictionary_encode(), 7),
         # a nested value is measured as Python prints it, which is how it renders
         (_array([[1, 2, 3], [4]], type=pa.list_(pa.int64())), 9),
+        # a tag inside one renders as itself, so it is measured as itself
+        (_array([["[red]x"]], type=pa.list_(pa.string())), len("['[red]x']")),
         (
             _array(
                 [{"a": 1, "b": "x"}],

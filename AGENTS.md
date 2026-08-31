@@ -175,7 +175,10 @@ escaping or parsing markup depending on `render_markup`, and rendering `datetime
 `date.max` (produced by `_handle_overflow` when Arrow values overflow Python types) as ∞.
 Every value it does not hand to rich as a string, a `Text` or a renderable of its own
 gets its text from `format.display_text` — bytes as a bounded escaped preview, anything
-else (a uuid, a list, a struct's dict) as `str(obj)`. That is the one place a value
+else (a uuid, a list, a struct's dict) as an escaped `str(obj)`: the brackets in a repr
+are the repr's, so a tag rich finds in one was never markup, and rendering it eats the
+structure around it (or raises, for an unbalanced tag). A string is the only value
+markup is parsed in, and `render_markup` says whether it is. That is the one place a value
 becomes text, so that the backends measure what the widget draws;
 `test_format.test_display_text_measures_as_the_cell_it_describes` holds the two in step.
 

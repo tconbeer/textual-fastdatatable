@@ -263,6 +263,8 @@ def test_a_marked_value_is_not_double_escaped() -> None:
         uuid.UUID(int=1),
         [1, 2, 3],
         {"a": 1},
+        ["[red]x"],  # the brackets in a repr are the repr's, not markup
+        {"a": "[/]"},  # ... and an unbalanced tag rich would refuse
         "plain",
         "[red]markup[/]",
         "a\nb",  # only the first line and the marker are rendered, so measured
@@ -282,3 +284,13 @@ def test_display_text_measures_as_the_cell_it_describes(
     assert measure_width(as_text, render_markup=True) == measure_width(
         value, render_markup=render_markup
     )
+
+
+@pytest.mark.parametrize("value", [["[/]"], {"a": "[/]"}, ("[bold]",)])
+def test_markup_in_a_repr_is_not_markup(value: object) -> None:
+    """A tag inside a list or a struct renders as itself, as it does inside bytes.
+
+    Rendering it eats the structure around it, and an unbalanced one raised."""
+    rendered = cell_formatter(value, null_rep=NULL)
+    assert isinstance(rendered, str)
+    assert Text.from_markup(rendered).plain == str(value)
