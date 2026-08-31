@@ -457,3 +457,21 @@ def test_extension_columns_are_not_converted_value_by_value(
 
     assert ArrowBackend(pa.table({"one": array})).column_content_widths
     assert calls == converted
+
+
+@pytest.mark.parametrize("render_markup,expected_width", [(True, 3), (False, 11)])
+def test_a_value_measured_in_python_follows_render_markup(
+    render_markup: bool, expected_width: int
+) -> None:
+    """A string that reaches the value-by-value path is measured as it renders.
+
+    It is the only value type the setting reaches, and it arrives as a bare object."""
+    backend = PolarsBackend.from_dataframe(
+        pl.DataFrame({"one": pl.Series(["[red]abc[/]"], dtype=pl.Object)})
+    )
+    backend.render_markup = render_markup
+
+    assert backend.column_content_widths == [expected_width]
+    assert expected_width == measure_width(
+        backend.get_cell_at(0, 0), render_markup=render_markup
+    )

@@ -242,15 +242,20 @@ _VALUE_BLOCK_SIZE = 100_000
 A block, not the column, so measuring never holds a Python object per row."""
 
 
-def _measure_display_text(blocks: Iterable[list[Any]]) -> int:
+def _measure_display_text(blocks: Iterable[list[Any]], render_markup: bool) -> int:
     """The widest rendering of a column Arrow cannot render as text, block by block.
 
-    Converted as the widget converts them; `format` is imported on the first use."""
+    `render_markup` is the table's, and reaches the one value type it changes: a
+    string, which renders literally without it, and so is escaped to be measured."""
     from textual_fastdatatable.format import display_text
 
     widest = 0
     for values in blocks:
-        strings = pa.array([display_text(value) for value in values], type=pa.string())
+        strings = pa.array(
+            [display_text(value, render_markup=render_markup) for value in values],
+            type=pa.string(),
+        )
+        # what `display_text` returns is markup, whatever it was told about strings
         widest = max(widest, _measure_strings(strings, render_markup=True) or 0)
     return widest
 
@@ -908,7 +913,7 @@ class ArrowBackend(DataTableBackend[pa.Table]):
         # but strings -- is converted value by value, the way the widget converts
         # it, since Arrow's own text for it is not what a cell shows (or, for the
         # types it cannot cast at all, does not exist).
-        return _measure_display_text(self._value_blocks(arr))
+        return _measure_display_text(self._value_blocks(arr), self.render_markup)
 
 
 if _HAS_POLARS:
@@ -1138,8 +1143,11 @@ if _HAS_POLARS:
 
             # the rest go to Python, value by value, the way the widget converts them
             return _measure_display_text(
-                arr.slice(offset, _VALUE_BLOCK_SIZE).to_list()
-                for offset in range(0, len(arr), _VALUE_BLOCK_SIZE)
+                (
+                    arr.slice(offset, _VALUE_BLOCK_SIZE).to_list()
+                    for offset in range(0, len(arr), _VALUE_BLOCK_SIZE)
+                ),
+                self.render_markup,
             )
 
         def sort(

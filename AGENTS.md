@@ -121,9 +121,10 @@ text (rarely valid UTF-8, which is how #176 crashed) rather than the 36 characte
 widget draws. So every other type — binary, extension, nested, a dictionary of anything
 but strings, whatever a driver invents next — is converted value by value with
 `format.display_text`, which is what `cell_formatter` renders those values as; polars is
-the same, and cannot cast a binary or nested column at all. Those strings are already
-markup (`display_text` escapes what renders literally), so they are measured with
-`render_markup=True` whatever the table renders strings as. `_measure_display_text`
+the same, and cannot cast a binary or nested column at all. `display_text` is told what
+the table renders strings as — the one value type that setting changes — and escapes a
+string it will render literally, so what comes back is markup either way, and is
+measured with `render_markup=True`. `_measure_display_text`
 walks the column `_VALUE_BLOCK_SIZE` values at a time and keeps the widest, so a large
 column never holds a Python object per row — the bound the scalar UDF this replaced got
 from Arrow's chunking. This path costs 1.5–5s per million values, against ~20ms for a
