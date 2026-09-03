@@ -217,20 +217,28 @@ message on `ctrl+c`/`super+c` — this requires the host app to be built with
     with a `TYPE_CHECKING` import so mypy still resolves it for downstream users. A
     convenience import at the top of `__init__.py` silently undoes this.
   - `pyarrow.parquet` is imported inside `ArrowBackend.from_parquet`, its only use site.
-    `pyarrow.compute`/`types`/`lib` stay at module scope; they're used in the hot path.
     Any module-scope `pq.` use undoes this.
+  - `pyarrow.compute` is imported inside the four functions that use it — `_register_udf`,
+    `_measure_cells`, `_measure_strings` and `ArrowBackend._measure` — because every use
+    of it in this module measures a column, so a consumer that only normalizes through
+    `create_backend()` never needs it. It costs ~68ms, more than `pyarrow` itself, and
+    halves what importing `backend` costs without the `polars` extra (133ms → 68ms).
+    Measuring is unaffected: the import is a `sys.modules` lookup once per column, and
+    `column_content_widths` over 200k rows × 5 columns measures the same either way.
+    `pyarrow`/`types`/`lib` stay at module scope; they cost nothing on top of `pyarrow`.
+    A module-scope `pc.` use undoes this.
   - `backend._measure_width` imports `format.measure_width` (and rich with it, plus the
     `Console` that module builds on its first measurement) on first call. Backends must
     not import rich or `format` at module scope, or construct a `Console` in `__init__`.
     A string column that is all ASCII never calls it, so an ASCII table never pays for
     rich at all.
 
-  `tests/unit_tests/test_lazy_imports.py` asserts all three, in a subprocess. To check by
-  hand (all `False`; the import costs ~225 modules on 3.10 against the required deps, 450
+  `tests/unit_tests/test_lazy_imports.py` asserts all four, in a subprocess. To check by
+  hand (all `False`; the import costs ~109 modules on 3.10 against the required deps, 441
   with the `polars` extra, which `uv sync` installs):
 
   ```bash
-  uv run python -c "import sys; from textual_fastdatatable.backend import create_backend; print('textual' in sys.modules, 'rich' in sys.modules, 'pyarrow.parquet' in sys.modules, len(sys.modules))"
+  uv run python -c "import sys; from textual_fastdatatable.backend import create_backend; print('textual' in sys.modules, 'rich' in sys.modules, 'pyarrow.parquet' in sys.modules, 'pyarrow.compute' in sys.modules, len(sys.modules))"
   ```
 - `tests/unit_tests/test_wheels.py` resolves the dependency floors in `pyproject.toml` for
   every supported Python/platform with wheels only. It shells out to `uv` and hits PyPI, so

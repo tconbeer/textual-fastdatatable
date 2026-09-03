@@ -5,7 +5,7 @@ import pytest
 
 # importing the backend must not import these; each is deferred to its use site,
 # so that consumers that never render pay for none of them.
-DEFERRED = ["textual", "rich", "pyarrow.parquet"]
+DEFERRED = ["textual", "rich", "pyarrow.parquet", "pyarrow.compute"]
 
 
 def _imported_modules(script: str) -> set[str]:
@@ -38,6 +38,22 @@ def test_measuring_widths_imports_rich() -> None:
         "print('\\n'.join(sys.modules))\n"
     )
     assert "rich" in modules
+
+
+def test_measuring_widths_imports_pyarrow_compute() -> None:
+    """Every use of it measures a column, so measuring one is what pays for it.
+
+    Unlike rich, there is no path that measures without it: the all-ASCII fast
+    path is Arrow kernels, which is the module this defers.
+    """
+    modules = _imported_modules(
+        "import sys\n"
+        "from textual_fastdatatable.backend import create_backend\n"
+        "backend = create_backend({'a': ['abc', 'de']})\n"
+        "assert backend.column_content_widths == [3]\n"
+        "print('\\n'.join(sys.modules))\n"
+    )
+    assert "pyarrow.compute" in modules
 
 
 def test_measuring_ascii_strings_does_not_import_rich() -> None:

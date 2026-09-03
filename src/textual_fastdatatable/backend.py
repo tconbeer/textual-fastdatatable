@@ -9,7 +9,6 @@ from pathlib import Path
 from typing import Any, Generic, Literal, TypeVar, cast
 
 import pyarrow as pa
-import pyarrow.compute as pc
 import pyarrow.lib as pal
 import pyarrow.types as pt
 
@@ -46,6 +45,13 @@ def _register_udf(
     summary: str,
 ) -> str:
     """Register `func` as an Arrow scalar UDF of one array, if it is not registered."""
+    # deferred: pyarrow.compute costs ~68ms to import, more than pyarrow itself,
+    # and every use of it in this module measures a column. A consumer that only
+    # normalizes data through create_backend() -- harlequin's headless CLI -- never
+    # measures anything, and so never pays for it. Once here, once per column
+    # thereafter: it is a sys.modules lookup, not a re-import.
+    import pyarrow.compute as pc
+
     if name not in _REGISTERED_UDFS:
         with suppress(pal.ArrowKeyError):  # registered by someone else
             pc.register_scalar_function(
@@ -98,6 +104,9 @@ def _measure_cells(arr: pa.Array, render_markup: bool) -> pa._PandasConvertible:
     (and rich with it) is imported at the first column that needs it, never for an
     all-ASCII one that renders literally.
     """
+    # deferred with the rest of pyarrow.compute; see `_register_udf`
+    import pyarrow.compute as pc
+
     lengths = pc.utf8_length(arr)
     # counting bytes is the cheap ASCII test: binary_length is offset arithmetic,
     # while scanning for non-ASCII bytes (string_is_ascii) costs several times more
@@ -208,6 +217,9 @@ def _measure_strings(arr: pa._PandasConvertible, render_markup: bool) -> int:
     type on first use, so that Arrow applies it a chunk at a time, and takes the
     widest result.
     """
+    # deferred with the rest of pyarrow.compute; see `_register_udf`
+    import pyarrow.compute as pc
+
     udf_name = _register_udf(
         f"tfdt_cell_width_{'markup' if render_markup else 'literal'}_{arr.type}",
         _cell_widths if render_markup else _cell_widths_no_markup,
@@ -850,6 +862,9 @@ class ArrowBackend(DataTableBackend[pa.Table]):
                 yield [self._handle_overflow(scalar) for scalar in block]
 
     def _measure(self, arr: pa._PandasConvertible) -> int:
+        # deferred with the rest of pyarrow.compute; see `_register_udf`
+        import pyarrow.compute as pc
+
         # an extension type is a storage type with a meaning attached, and which of
         # the two a cell shows is the type's to say. Where the meaning is only an
         # annotation -- `arrow.json`, `arrow.opaque`, and any type this pyarrow has
