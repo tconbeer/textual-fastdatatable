@@ -5,9 +5,8 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 - `pyarrow.compute` is now imported when a column is first measured, instead of when
-  `textual_fastdatatable.backend` is imported. A consumer that uses `create_backend()`
-  to normalize data and never renders it pays ~68ms less: importing the backend costs
-  68ms instead of 133ms without the `polars` extra. Measuring widths is unaffected.
+  `textual_fastdatatable.backend` is imported.
+
 
 ## [0.19.1] - 2026-08-31
 
