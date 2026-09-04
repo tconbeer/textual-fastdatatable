@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+- `pyarrow.compute` is now imported when a column is first measured, instead of when
+  `textual_fastdatatable.backend` is imported.
+
+
 ## [0.19.1] - 2026-08-31
 
 - Columns of Arrow extension types (like the `arrow.uuid` that pyarrow infers for
