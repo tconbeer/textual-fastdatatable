@@ -4,9 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.19.2] - 2026-09-04
+
 - `pyarrow.compute` is now imported when a column is first measured, instead of when
   `textual_fastdatatable.backend` is imported.
-
 
 ## [0.19.1] - 2026-08-31
 
@@ -252,7 +253,8 @@ All notable changes to this project will be documented in this file.
 
 - Initial release. Adds DataTable and ArrowBackend, which is 1000x faster for datasets of 500k records or more.
 
-[unreleased]: https://github.com/tconbeer/textual-fastdatatable/compare/0.19.1...HEAD
+[unreleased]: https://github.com/tconbeer/textual-fastdatatable/compare/0.19.2...HEAD
+[0.19.2]: https://github.com/tconbeer/textual-fastdatatable/compare/0.19.1...0.19.2
 [0.19.1]: https://github.com/tconbeer/textual-fastdatatable/compare/0.19.0...0.19.1
 [0.19.0]: https://github.com/tconbeer/textual-fastdatatable/compare/0.18.0...0.19.0
 [0.18.0]: https://github.com/tconbeer/textual-fastdatatable/compare/0.17.1...0.18.0
