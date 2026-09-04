@@ -29,7 +29,7 @@ polars = ["polars>=1,<2"]
 
 [dependency-groups]
 dev = [
-    "pre-commit>=3.3,<4",
+    "pre-commit>=3.3,<5",
     "textual-dev==1.7.0",
     "pyinstrument>=5,<6",
     # scripts/benchmark.py loads the same data with pandas and polars, to compare
