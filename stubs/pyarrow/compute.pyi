@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Callable, Literal, Sequence
+from typing import Any, Callable, Literal
 
-from . import DataType, MemoryPool, Scalar, _PandasConvertible, _Tabular
+from . import DataType, MemoryPool, Scalar, _PandasConvertible
 
 class Expression: ...
 class ScalarAggregateOptions: ...
@@ -103,20 +103,11 @@ def index_in(
     memory_pool: MemoryPool | None = None,
 ) -> _PandasConvertible: ...
 def take(
-    data: _PandasConvertible | _Tabular,
+    data: _PandasConvertible,
     indices: _PandasConvertible,
     /,
     *,
     boundscheck: bool = True,
-    memory_pool: MemoryPool | None = None,
-) -> _PandasConvertible: ...
-def sort_indices(
-    input: Any,  # noqa: A002
-    /,
-    sort_keys: Sequence[tuple[str, str]] = (),
-    *,
-    null_placement: str = "at_end",
-    options: Any | None = None,
     memory_pool: MemoryPool | None = None,
 ) -> _PandasConvertible: ...
 def utf8_length(

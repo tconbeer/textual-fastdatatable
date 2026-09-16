@@ -885,17 +885,11 @@ class ArrowBackend(DataTableBackend[pa.Table]):
         by: list[tuple] sorts the table by the named column(s) with the directions
             indicated.
         """
-        sortable = _sortable(self.data)
-        if sortable is self.data:
-            self.data = self.data.sort_by(by)
-            return
-
-        # deferred with the rest of pyarrow.compute; see `_register_udf`
-        import pyarrow.compute as pc
-
-        sort_keys = [(by, "ascending")] if isinstance(by, str) else list(by)
-        indices = pc.sort_indices(sortable, sort_keys=sort_keys)
-        self.data = cast(pa.Table, pc.take(self.data, indices))
+        # Arrow sorts no extension type at all, so the sort runs over the values
+        # each column stores and the result is cast back; both the substitution
+        # and the cast reinterpret the same buffers, and a table with no
+        # extension column is sorted exactly as it always was.
+        self.data = _sortable(self.data).sort_by(by).cast(self.data.schema)
 
     def _reset_content_widths(self) -> None:
         self._column_content_widths = []

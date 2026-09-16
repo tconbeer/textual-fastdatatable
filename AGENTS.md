@@ -160,10 +160,11 @@ reinterprets the same buffers, so a table with nothing tagged is returned unchan
 a tagged one costs a schema walk and no copy. A name with no class in `EXTENSION_TYPES`,
 and a storage type a name does not describe, are both left alone.
 
-Arrow sorts no extension type at all, whatever its storage, so `ArrowBackend.sort` orders
-a column of one by its storage (`_sortable`) — the order it had before the type was
-attached — and takes that permutation over the real table. A table with no extension
-column is sorted by `sort_by` as before and pays nothing.
+Arrow sorts no extension type at all, whatever its storage, so `ArrowBackend.sort` runs
+`sort_by` over the values each column stores (`_sortable`) and casts the result back —
+the order a column of one had before the type was attached. Both the substitution and
+the cast reinterpret the same buffers, and a table with no extension column is sorted
+exactly as it always was.
 
 `ArrowBackend.update_cell` writes a column back from the Python values of *every* one of
 its rows, so a type whose values are not its storage cannot go through it: a geometry's
