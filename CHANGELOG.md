@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.19.3] - 2026-09-16
+
 - Geometry columns now display as text, like `POINT (-117.93367 34.34613)`, instead of
   as a preview of their bytes. Any column tagged with the `geoarrow.wkb` Arrow extension
   type is rendered as its Well-Known Text, including geometries nested in a list, struct,
@@ -262,7 +264,8 @@ All notable changes to this project will be documented in this file.
 
 - Initial release. Adds DataTable and ArrowBackend, which is 1000x faster for datasets of 500k records or more.
 
-[unreleased]: https://github.com/tconbeer/textual-fastdatatable/compare/0.19.2...HEAD
+[unreleased]: https://github.com/tconbeer/textual-fastdatatable/compare/0.19.3...HEAD
+[0.19.3]: https://github.com/tconbeer/textual-fastdatatable/compare/0.19.2...0.19.3
 [0.19.2]: https://github.com/tconbeer/textual-fastdatatable/compare/0.19.1...0.19.2
 [0.19.1]: https://github.com/tconbeer/textual-fastdatatable/compare/0.19.0...0.19.1
 [0.19.0]: https://github.com/tconbeer/textual-fastdatatable/compare/0.18.0...0.19.0
