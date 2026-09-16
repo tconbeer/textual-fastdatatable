@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+- Geometry columns now display as text, like `POINT (-117.93367 34.34613)`, instead of
+  as a preview of their bytes. Any column tagged with the `geoarrow.wkb` Arrow extension
+  type is rendered as its Well-Known Text, including geometries nested in a list, struct,
+  or map; a backend's `source_data` still holds the original binary
+  ([tconbeer/harlequin#302](https://github.com/tconbeer/harlequin/issues/302)).
+- Sorting by a column of an Arrow extension type (like `arrow.uuid`) no longer raises.
+- Updating a cell of an Arrow extension type whose values are not the values it stores
+  now raises instead of rewriting the column.
+
 ## [0.19.2] - 2026-09-04
 
 - `pyarrow.compute` is now imported when a column is first measured, instead of when

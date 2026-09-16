@@ -12,6 +12,8 @@ import pyarrow as pa
 import pyarrow.lib as pal
 import pyarrow.types as pt
 
+from textual_fastdatatable.extension_types import canonicalize
+
 AutoBackendType = Any
 
 try:
@@ -287,6 +289,27 @@ def _extension_value_is_its_storage(scalar: pa.Scalar) -> bool:
     True unless the scalar class overrides `as_py`, which is not the same as the two
     comparing equal: `arrow.bool8`'s `True` equals its storage's `1` and renders `✓`."""
     return type(scalar).as_py is pa.ExtensionScalar.as_py
+
+
+def _sortable(data: pa.Table) -> pa.Table:
+    """`data` with every extension column replaced by the values it stores.
+
+    Arrow sorts no extension type at all, whatever its storage, so a column of one
+    is ordered by its storage -- the order it had before the type was attached.
+    `data` itself when it holds no extension column, which is the usual case and
+    costs one pass over the schema.
+    """
+    columns = data.columns
+    is_extension = [isinstance(column.type, pa.BaseExtensionType) for column in columns]
+    if not any(is_extension):
+        return data
+    return pa.Table.from_arrays(
+        [
+            _extension_storage(column) if extension else column
+            for column, extension in zip(columns, is_extension, strict=False)
+        ],
+        names=data.column_names,
+    )
 
 
 def _renders_at_a_fixed_width(value: Any) -> bool:
@@ -602,6 +625,10 @@ class ArrowBackend(DataTableBackend[pa.Table]):
             data = _relabel(data, column_names)
         self._source_data = data
 
+        # only the displayed copy: an extension type says what a cell shows, not
+        # what the caller handed over, and `source_data` is the caller's table
+        data = canonicalize(data)
+
         # Arrow allows duplicate field names, but a table's to_pylist() and
         # to_pydict() methods will drop duplicate-named fields!
         field_names, renamed = _deduplicate(data.column_names)
@@ -825,6 +852,17 @@ class ArrowBackend(DataTableBackend[pa.Table]):
 
     def update_cell(self, row_index: int, column_index: int, value: Any) -> None:
         column = self.data.column(column_index)
+        if isinstance(column.type, pa.BaseExtensionType) and not (
+            _extension_value_is_its_storage(column[row_index])
+        ):
+            # the column is written back from the Python values of every one of its
+            # rows, and these are not the values it stores -- a geometry's WKT would
+            # go back into WKB storage as the bytes of its own text, rewriting rows
+            # the caller never touched
+            raise TypeError(
+                f"Cannot update a cell of {column.type}: its values are not the "
+                "values it stores."
+            )
         pycolumn = self.get_column_at(column_index=column_index)
         pycolumn[row_index] = value
         new_type = pa.string() if pt.is_null(column.type) else column.type
@@ -847,7 +885,11 @@ class ArrowBackend(DataTableBackend[pa.Table]):
         by: list[tuple] sorts the table by the named column(s) with the directions
             indicated.
         """
-        self.data = self.data.sort_by(by)
+        # Arrow sorts no extension type at all, so the sort runs over the values
+        # each column stores and the result is cast back; both the substitution
+        # and the cast reinterpret the same buffers, and a table with no
+        # extension column is sorted exactly as it always was.
+        self.data = _sortable(self.data).sort_by(by).cast(self.data.schema)
 
     def _reset_content_widths(self) -> None:
         self._column_content_widths = []
