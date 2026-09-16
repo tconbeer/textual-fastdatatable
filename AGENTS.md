@@ -146,6 +146,25 @@ override `as_py`, and their values render at a width their Python type fixes
 pyarrow that gives one of these a class of its own only costs a measurement; it cannot
 mismeasure, which is what makes the rule safe for extension types nobody has seen yet.
 
+A type pyarrow has *no* class for arrives as its bare storage, with
+`ARROW:extension:name` in the field's metadata — which is how duckdb hands over a
+GEOMETRY column, as WKB tagged `geoarrow.wkb`, and how a GeoArrow producer hands over
+any geometry. Its bytes are not what a cell shows, so `extension_types.canonicalize()`
+gives such a field one of the classes in `EXTENSION_TYPES`, whose scalars convert to the
+text the value means (`wkb.wkb_to_wkt` for a geometry, which is stdlib-only and pinned
+to duckdb's `ST_AsText` by a corpus duckdb generated). Everything above then measures
+and renders it through the extension-type path already described. `ArrowBackend.__init__`
+canonicalizes `self.data` and **not `source_data`**: the extension type says what a cell
+shows, while `source_data` is the caller's own table, which a consumer exports. The cast
+reinterprets the same buffers, so a table with nothing tagged is returned unchanged and
+a tagged one costs a schema walk and no copy. A name with no class in `EXTENSION_TYPES`,
+and a storage type a name does not describe, are both left alone.
+
+Arrow sorts no extension type at all, whatever its storage, so `ArrowBackend.sort` orders
+a column of one by its storage (`_sortable`) — the order it had before the type was
+attached — and takes that permutation over the real table. A table with no extension
+column is sorted by `sort_by` as before and pays nothing.
+
 Every UDF is registered through `_register_udf`, which registers a name at most once:
 `pc.register_scalar_function` raises for a name that is taken **and drops a reference to
 the function already registered under it**, so re-registering segfaults pyarrow a couple
@@ -231,10 +250,11 @@ message on `ctrl+c`/`super+c` — this requires the host app to be built with
     `Console` that module builds on its first measurement) on first call. Backends must
     not import rich or `format` at module scope, or construct a `Console` in `__init__`.
     A string column that is all ASCII never calls it, so an ASCII table never pays for
-    rich at all.
+    rich at all. `extension_types` and `wkb`, which `backend` does import at module
+    scope, are held to the same rule: pyarrow and the stdlib only.
 
   `tests/unit_tests/test_lazy_imports.py` asserts all four, in a subprocess. To check by
-  hand (all `False`; the import costs ~109 modules on 3.10 against the required deps, 441
+  hand (all `False`; the import costs ~111 modules on 3.10 against the required deps, 443
   with the `polars` extra, which `uv sync` installs):
 
   ```bash

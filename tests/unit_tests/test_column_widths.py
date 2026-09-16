@@ -137,3 +137,24 @@ async def test_a_column_of_an_extension_type_is_as_wide_as_it_renders() -> None:
 
     assert column.render_width == 38  # 36 characters, plus the cell padding
     assert rendered.strip() == str(value)
+
+
+@pytest.mark.asyncio
+async def test_a_geometry_column_renders_as_the_geometry_it_holds() -> None:
+    """The whole path, for harlequin#302: a tagged WKB column shows its WKT."""
+    wkb = bytes.fromhex("010100000068d0d03fc17b5dc00e15e3fc4d2c4140")
+    field = pa.field(
+        "geom", pa.binary(), metadata={b"ARROW:extension:name": b"geoarrow.wkb"}
+    )
+    column = pa.array([wkb], type=pa.binary())
+    assert isinstance(column, pa.Array)
+    data = pa.Table.from_arrays([column], schema=pa.schema([field]))
+
+    table = DataTable(data=data)
+    app = TableApp(table)
+    async with app.run_test(size=(80, 6)):
+        (rendered_column,) = table.ordered_columns
+        rendered = table.render_line(1).text
+
+    assert rendered.strip() == "POINT (-117.93367 34.34613)"
+    assert rendered_column.render_width == 29  # 27 characters, plus the cell padding
