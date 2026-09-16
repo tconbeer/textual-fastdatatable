@@ -852,6 +852,17 @@ class ArrowBackend(DataTableBackend[pa.Table]):
 
     def update_cell(self, row_index: int, column_index: int, value: Any) -> None:
         column = self.data.column(column_index)
+        if isinstance(column.type, pa.BaseExtensionType) and not (
+            _extension_value_is_its_storage(column[row_index])
+        ):
+            # the column is written back from the Python values of every one of its
+            # rows, and these are not the values it stores -- a geometry's WKT would
+            # go back into WKB storage as the bytes of its own text, rewriting rows
+            # the caller never touched
+            raise TypeError(
+                f"Cannot update a cell of {column.type}: its values are not the "
+                "values it stores."
+            )
         pycolumn = self.get_column_at(column_index=column_index)
         pycolumn[row_index] = value
         new_type = pa.string() if pt.is_null(column.type) else column.type

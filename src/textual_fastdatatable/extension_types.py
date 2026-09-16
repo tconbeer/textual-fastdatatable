@@ -149,7 +149,9 @@ def _canonicalized_type(data_type: pa.DataType) -> pa.DataType | None:
         # a map's one child is its entries struct, of exactly a key and an item
         entries = _children(data_type.field(0).type)
         rebuilt = _canonicalized_children(entries)
-        return None if rebuilt is None else pa.map_(rebuilt[0], rebuilt[1])
+        if rebuilt is None:
+            return None
+        return pa.map_(rebuilt[0], rebuilt[1], keys_sorted=data_type.keys_sorted)
 
     if pt.is_list(data_type):
         value_field = _canonicalized_field(data_type.value_field)

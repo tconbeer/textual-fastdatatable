@@ -3,13 +3,16 @@ from __future__ import annotations
 import struct
 from pathlib import Path
 
+import pyarrow as pa
 import pytest
 
-from textual_fastdatatable.wkb import WkbError, wkb_to_wkt
+from textual_fastdatatable.backend import ArrowBackend
+from textual_fastdatatable.wkb import MAX_NESTING_DEPTH, WkbError, wkb_to_wkt
 
 LITTLE_ENDIAN = bytes([1])
 BIG_ENDIAN = bytes([0])
 POINT = 1
+GEOMETRYCOLLECTION = 7
 SRID_FLAG = 0x20000000
 
 
@@ -89,3 +92,39 @@ def test_an_srid_is_read_past_rather_than_spelled() -> None:
         + struct.pack("<dd", 1.0, 2.0)
     )
     assert wkb_to_wkt(ewkb) == "POINT (1 2)"
+
+
+def _nested_collections(levels: int) -> bytes:
+    """A point wrapped in `levels` GEOMETRYCOLLECTIONs."""
+    blob = _point(0.0, 0.0)
+    for _ in range(levels):
+        blob = LITTLE_ENDIAN + struct.pack("<II", GEOMETRYCOLLECTION, 1) + blob
+    return blob
+
+
+def test_nesting_up_to_the_limit_reads() -> None:
+    wkt = wkb_to_wkt(_nested_collections(MAX_NESTING_DEPTH - 1))
+
+    assert wkt.count("GEOMETRYCOLLECTION") == MAX_NESTING_DEPTH - 1
+    assert wkt.endswith("POINT (0 0)" + ")" * (MAX_NESTING_DEPTH - 1))
+
+
+def test_nesting_past_the_limit_is_not_a_geometry() -> None:
+    """A WkbError, not a RecursionError: bytes that do not decode as a geometry
+    have to reach the caller as that, so a cell can fall back to the blob."""
+    with pytest.raises(WkbError, match="nests deeper"):
+        wkb_to_wkt(_nested_collections(MAX_NESTING_DEPTH))
+
+
+def test_a_deeply_nested_geometry_column_renders_as_its_bytes() -> None:
+    """The whole path: ~18KB of nested collections used to raise RecursionError
+    out of `as_py` and take the widget down."""
+    blob = _nested_collections(2000)
+    field = pa.field(
+        "geom", pa.binary(), metadata={b"ARROW:extension:name": b"geoarrow.wkb"}
+    )
+    column = pa.array([blob], type=pa.binary())
+    assert isinstance(column, pa.Array)
+    data = pa.Table.from_arrays([column], schema=pa.schema([field]))
+
+    assert ArrowBackend(data).get_column_at(0) == [blob]

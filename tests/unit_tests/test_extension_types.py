@@ -264,3 +264,54 @@ def test_a_uuid_column_sorts_by_the_bytes_it_stores() -> None:
     backend.sort("u")
 
     assert backend.get_column_at(0) == [uuid.UUID(int=1), uuid.UUID(int=2)]
+
+
+def test_a_geometry_cell_cannot_be_updated() -> None:
+    """The column is written back from every row's value, and those are not its
+    storage -- updating one cell would re-encode the rest from their own text."""
+    backend = ArrowBackend(geometry_table(WKB_POINT, WKB_LINESTRING))
+
+    with pytest.raises(TypeError, match="not the values it stores"):
+        backend.update_cell(0, 0, "POINT (9 9)")
+
+    assert backend.get_column_at(0) == [WKT_POINT, WKT_LINESTRING]
+    assert backend.source_data.column(0).to_pylist() == [WKB_POINT, WKB_LINESTRING]
+
+
+def test_a_uuid_cell_cannot_be_updated_either() -> None:
+    """Every extension type whose values are not its storage refuses the same way."""
+    storage = pa.array([uuid.UUID(int=1).bytes], type=pa.binary(16))
+    assert isinstance(storage, pa.Array)
+    backend = ArrowBackend(
+        pa.table({"u": pa.ExtensionArray.from_storage(pa.uuid(), storage)})
+    )
+
+    with pytest.raises(TypeError, match="not the values it stores"):
+        backend.update_cell(0, 0, uuid.UUID(int=2))
+
+    assert backend.get_column_at(0) == [uuid.UUID(int=1)]
+
+
+def test_an_ordinary_binary_cell_still_updates() -> None:
+    """Only an extension column is refused; a blob is its own storage."""
+    backend = ArrowBackend(pa.table({"b": pa.array([b"x", b"y"], type=pa.binary())}))
+
+    backend.update_cell(0, 0, b"z")
+
+    assert backend.get_column_at(0) == [b"z", b"y"]
+
+
+def test_a_map_keeps_keys_sorted_when_its_geometry_is_converted() -> None:
+    column_type = pa.map_(pa.string(), geometry_field("g"), keys_sorted=True)
+    column = pa.array([[("here", WKB_POINT)]], type=column_type)
+    assert isinstance(column, pa.Array)
+    data = pa.Table.from_arrays(
+        [column], schema=pa.schema([pa.field("m", column_type)])
+    )
+
+    canonicalized = canonicalize(data)
+
+    map_type = canonicalized.schema.field(0).type
+    assert pa.types.is_map(map_type)
+    assert map_type.keys_sorted
+    assert canonicalized.column(0).to_pylist() == [[("here", WKT_POINT)]]

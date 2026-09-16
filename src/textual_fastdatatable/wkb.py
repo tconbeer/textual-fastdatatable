@@ -36,6 +36,16 @@ _GEOMETRYCOLLECTION = 7
 _WKB_SRID_FLAG = 0x20000000
 """Set in the type code when an EWKB geometry carries an SRID before its body."""
 
+MAX_NESTING_DEPTH = 64
+"""How deeply a geometry may nest before it is read as not being one.
+
+A collection holds geometries, so a chain of them recurses once per level and
+bytes that nest deeply enough would exhaust the interpreter's stack rather than
+raise `WkbError`. No producer emits anything near this -- a collection of
+collections is already unusual -- so past it the bytes are treated as the
+corrupt or hostile input they are, and shown as a blob like any other.
+"""
+
 
 class WkbError(ValueError):
     """Raised for bytes that are not the WKB geometry they claim to be."""
@@ -57,11 +67,20 @@ def _format_coordinate(value: float) -> str:
 class _Reader:
     """A cursor over a WKB buffer. Each read advances it."""
 
-    __slots__ = ("data", "position")
+    __slots__ = ("data", "depth", "position")
 
     def __init__(self, data: bytes) -> None:
         self.data = data
         self.position = 0
+        self.depth = 0
+
+    def descend(self) -> None:
+        self.depth += 1
+        if self.depth > MAX_NESTING_DEPTH:
+            raise WkbError(f"WKB nests deeper than {MAX_NESTING_DEPTH} geometries")
+
+    def ascend(self) -> None:
+        self.depth -= 1
 
     def byte_order(self) -> str:
         try:
@@ -104,6 +123,14 @@ def _read_points(reader: _Reader, order: str, coordinates: int) -> str:
 
 
 def _read_geometry(reader: _Reader) -> str:
+    reader.descend()
+    try:
+        return _read_one_geometry(reader)
+    finally:
+        reader.ascend()
+
+
+def _read_one_geometry(reader: _Reader) -> str:
     order = reader.byte_order()
     type_code = reader.uint32(order)
     if type_code & _WKB_SRID_FLAG:
