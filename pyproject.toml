@@ -42,7 +42,7 @@ static = [
     "mypy>=1.18.0,<2",
 ]
 test = [
-    "textual==7.5.0",
+    "textual==8.2.8",
     "pytest>=7.3.1,<9.0.0",
     "pytest-asyncio==1.2.0",
     "pytest-textual-snapshot==1.1.0",
