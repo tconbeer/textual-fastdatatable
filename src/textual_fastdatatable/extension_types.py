@@ -18,7 +18,7 @@ here is left as its storage, which is what pyarrow does with it too.
 
 from __future__ import annotations
 
-from typing import Any, Callable, Iterable
+from typing import Any, Callable, Iterable, cast
 
 import pyarrow as pa
 import pyarrow.types as pt
@@ -86,18 +86,41 @@ class ParquetVariantScalar(pa.ExtensionScalar):
         if storage is None:
             return None
         buffers: dict[str, bytes | None] = storage.as_py()
-        metadata, value = buffers["metadata"], buffers["value"]
-        if metadata is None or value is None:
-            return None
-        try:
-            return variant_to_python(metadata, value)
-        except VariantError:
-            # tagged a variant but not one: the buffers are all it is known to be
-            return buffers
+        return _variant_or_buffers(buffers["metadata"], buffers["value"])
+
+
+class ParquetVariantArray(pa.ExtensionArray):
+    """A column of variants, decoded from its buffers in one pass."""
+
+    def to_pylist(self, **kwargs: Any) -> list[object]:
+        # a scalar per row costs more than decoding it does
+        storage = cast(pa.StructArray, self.storage)
+        metadata = storage.field("metadata").to_pylist()
+        values = storage.field("value").to_pylist()
+        present = storage.is_valid().to_pylist()
+        return [
+            _variant_or_buffers(row_metadata, row_value) if row_present else None
+            for row_present, row_metadata, row_value in zip(
+                present, metadata, values, strict=True
+            )
+        ]
+
+
+def _variant_or_buffers(metadata: bytes | None, value: bytes | None) -> object:
+    if metadata is None or value is None:
+        return None
+    try:
+        return variant_to_python(metadata, value)
+    except VariantError:
+        # tagged a variant but not one: the buffers are all it is known to be
+        return {"metadata": metadata, "value": value}
 
 
 class ParquetVariantType(pa.ExtensionType):
     """`arrow.parquet.variant`: a value of any type, in Parquet's Variant encoding."""
+
+    values_share_a_type = False
+    """Read by the backend's measuring, which may measure one value for all."""
 
     def __init__(self, storage_type: pa.DataType, serialized: bytes = b"") -> None:
         self._serialized = serialized
@@ -115,6 +138,9 @@ class ParquetVariantType(pa.ExtensionType):
     def __arrow_ext_scalar_class__(self) -> type[pa.ExtensionScalar]:
         return ParquetVariantScalar
 
+    def __arrow_ext_class__(self) -> type[pa.ExtensionArray]:
+        return ParquetVariantArray
+
 
 def _is_binary(data_type: pa.DataType) -> bool:
     return (
@@ -127,8 +153,8 @@ def _is_binary(data_type: pa.DataType) -> bool:
 def _parquet_variant(
     storage_type: pa.DataType, serialized: bytes
 ) -> pa.DataType | None:
-    # exactly the two buffers: a shredded variant also has a `typed_value`, whose
-    # values this package does not read
+    # exactly the two buffers, so a shredded variant, which adds a `typed_value`,
+    # is left as its storage
     if not pt.is_struct(storage_type):
         return None
     children = {child.name: child.type for child in _children(storage_type)}

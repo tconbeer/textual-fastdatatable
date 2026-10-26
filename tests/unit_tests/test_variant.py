@@ -117,8 +117,29 @@ def test_offsets_that_share_one_value_cannot_multiply_it() -> None:
     for _ in range(40):
         # two elements, both at offset 0
         value = bytes([0x03, 0x02, 0x00, 0x00, len(value)]) + value
-    with pytest.raises(VariantError, match="more values than it has bytes"):
+    with pytest.raises(VariantError, match="more than it has bytes"):
         variant_to_python(NO_KEYS, value)
+
+
+def test_offsets_that_share_one_string_cannot_multiply_it() -> None:
+    """Each element is one value, but would be a copy of the whole string."""
+    text = b"x" * 1000
+    string = bytes([0x40]) + len(text).to_bytes(4, "little") + text
+    count = 200
+    # a four-byte count and one-byte offsets, all of them 0
+    header = bytes([0x03 | 0x04 << 2]) + count.to_bytes(4, "little")
+    value = header + bytes(count + 1) + string
+    with pytest.raises(VariantError, match="more than it has bytes"):
+        variant_to_python(NO_KEYS, value)
+
+
+def test_an_object_that_repeats_a_key_raises() -> None:
+    metadata = bytes([0x01, 0x01, 0x00, 0x01]) + b"a"
+    one = bytes([0x0C, 0x01])
+    # two fields, both key 0, at offsets 0 and 2
+    value = bytes([0x02, 0x02, 0x00, 0x00, 0x00, 0x02, 0x04]) + one + one
+    with pytest.raises(VariantError, match="repeats a key"):
+        variant_to_python(metadata, value)
 
 
 def test_a_tagged_struct_becomes_a_variant() -> None:
@@ -181,6 +202,38 @@ def test_a_variant_column_is_measured_from_every_value_not_the_first() -> None:
 
 
 def test_bytes_tagged_as_a_variant_that_are_not_one_stay_its_buffers() -> None:
-    backend = ArrowBackend(variant_table((NO_KEYS, bytes([0x54]))))
+    backend = ArrowBackend(variant_table((NO_KEYS, bytes([0x54])), None))
+    buffers = {"metadata": NO_KEYS, "value": bytes([0x54])}
 
-    assert backend.get_cell_at(0, 0) == {"metadata": NO_KEYS, "value": bytes([0x54])}
+    assert backend.get_cell_at(0, 0) == buffers
+    assert backend.get_column_at(0) == [buffers, None]
+
+
+VARIANT_FIELD = pa.field("v", VARIANT_STORAGE, metadata=PARQUET_VARIANT)
+B = {"metadata": NO_KEYS, "value": short_string("b")}
+A = {"metadata": NO_KEYS, "value": short_string("a")}
+
+
+@pytest.mark.parametrize(
+    ("storage_type", "rows", "expected"),
+    [
+        pytest.param(pa.list_(VARIANT_FIELD), [[B], [A]], [["a"], ["b"]], id="list"),
+        pytest.param(
+            pa.struct([VARIANT_FIELD]),
+            [{"v": B}, {"v": A}],
+            [{"v": "a"}, {"v": "b"}],
+            id="struct",
+        ),
+    ],
+)
+def test_a_table_holding_a_nested_variant_sorts(
+    storage_type: pa.DataType, rows: list[object], expected: list[object]
+) -> None:
+    backend = ArrowBackend(
+        pa.table({"id": [2, 1], "nested": pa.array(rows, type=storage_type)})
+    )
+
+    backend.sort("id")
+
+    assert backend.get_column_at(0) == [1, 2]
+    assert backend.get_column_at(1) == expected

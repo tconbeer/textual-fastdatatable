@@ -12,7 +12,7 @@ import pyarrow as pa
 import pyarrow.lib as pal
 import pyarrow.types as pt
 
-from textual_fastdatatable.extension_types import ParquetVariantType, canonicalize
+from textual_fastdatatable.extension_types import canonicalize
 
 AutoBackendType = Any
 
@@ -888,8 +888,20 @@ class ArrowBackend(DataTableBackend[pa.Table]):
         # Arrow sorts no extension type at all, so the sort runs over the values
         # each column stores and the result is cast back; both the substitution
         # and the cast reinterpret the same buffers, and a table with no
-        # extension column is sorted exactly as it always was.
-        self.data = _sortable(self.data).sort_by(by).cast(self.data.schema)
+        # extension column is sorted exactly as it always was. Only the columns
+        # `_sortable` substituted are cast: pyarrow corrupts an identity cast of
+        # an extension type over a struct, such as a variant in a list.
+        schema = self.data.schema
+        sorted_data = _sortable(self.data).sort_by(by)
+        self.data = pa.Table.from_arrays(
+            [
+                column.cast(field.type)
+                if isinstance(field.type, pa.BaseExtensionType)
+                else column
+                for column, field in zip(sorted_data.columns, schema, strict=False)
+            ],
+            schema=schema,
+        )
 
     def _reset_content_widths(self) -> None:
         self._column_content_widths = []
@@ -924,10 +936,10 @@ class ArrowBackend(DataTableBackend[pa.Table]):
             if _extension_value_is_its_storage(scalar):
                 return self._measure(_extension_storage(arr))
             value = scalar.as_py()
-            # a variant's values are each of their own type, so one measures itself
-            if _renders_at_a_fixed_width(value) and not isinstance(
-                arr.type, ParquetVariantType
-            ):
+            # a type whose values are each of their own type, such as a variant's,
+            # is never measured from one of them
+            values_share_a_type = getattr(arr.type, "values_share_a_type", True)
+            if values_share_a_type and _renders_at_a_fixed_width(value):
                 return _measure_width(value)
 
         # with some types we can measure the width more efficiently
