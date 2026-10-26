@@ -42,7 +42,7 @@ def duckdb_corpus() -> list[tuple[str, str, str]]:
     and arrays that need wider offsets, ids and counts, and nesting. Each repr is
     of the value duckdb's own client converts the same VARIANT to.
     """
-    lines = CORPUS_PATH.read_text().splitlines()
+    lines = CORPUS_PATH.read_text(encoding="utf-8").splitlines()
     rows = [line.split("\t") for line in lines if not line.startswith("#")]
     return [(metadata, value, expected) for metadata, value, expected in rows]
 
