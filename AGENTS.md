@@ -152,7 +152,12 @@ GEOMETRY column, as WKB tagged `geoarrow.wkb`, and how a GeoArrow producer hands
 any geometry. Its bytes are not what a cell shows, so `extension_types.canonicalize()`
 gives such a field one of the classes in `EXTENSION_TYPES`, whose scalars convert to the
 text the value means (`wkb.wkb_to_wkt` for a geometry, which is stdlib-only and pinned
-to duckdb's `ST_AsText` by a corpus duckdb generated). Everything above then measures
+to duckdb's `ST_AsText` by a corpus duckdb generated; `variant.variant_to_python` for an
+`arrow.parquet.variant`, likewise stdlib-only and pinned to duckdb's Python client).
+A variant's values are each of their own type, so its type sets `values_share_a_type =
+False` and `_measure` never measures its column from one fixed-width value; its array
+class decodes a whole column at once, since a scalar per row costs more than decoding
+it. Everything above then measures
 and renders it through the extension-type path already described. `ArrowBackend.__init__`
 canonicalizes `self.data` and **not `source_data`**: the extension type says what a cell
 shows, while `source_data` is the caller's own table, which a consumer exports. The cast
@@ -164,7 +169,9 @@ Arrow sorts no extension type at all, whatever its storage, so `ArrowBackend.sor
 `sort_by` over the values each column stores (`_sortable`) and casts the result back —
 the order a column of one had before the type was attached. Both the substitution and
 the cast reinterpret the same buffers, and a table with no extension column is sorted
-exactly as it always was.
+exactly as it always was. Only the columns `_sortable` substituted are cast, never the
+whole table: pyarrow corrupts an identity cast of an extension type over a struct nested
+in another type, which a variant in a list is.
 
 `ArrowBackend.update_cell` writes a column back from the Python values of *every* one of
 its rows, so a type whose values are not its storage cannot go through it: a geometry's
@@ -257,7 +264,7 @@ message on `ctrl+c`/`super+c` — this requires the host app to be built with
     `Console` that module builds on its first measurement) on first call. Backends must
     not import rich or `format` at module scope, or construct a `Console` in `__init__`.
     A string column that is all ASCII never calls it, so an ASCII table never pays for
-    rich at all. `extension_types` and `wkb`, which `backend` does import at module
+    rich at all. `extension_types`, `wkb` and `variant`, which `backend` imports at module
     scope, are held to the same rule: pyarrow and the stdlib only.
 
   `tests/unit_tests/test_lazy_imports.py` asserts all four, in a subprocess. To check by

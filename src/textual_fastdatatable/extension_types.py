@@ -6,7 +6,8 @@ says which of the two a cell shows. pyarrow materializes the canonical ones
 for arrives as its bare storage with `ARROW:extension:name` in the field's
 metadata -- which is how a geometry column reaches a table, as WKB tagged
 `geoarrow.wkb`, from duckdb's spatial extension and from GeoArrow producers
-generally. Its bytes are not what a cell shows.
+generally, and a VARIANT, as the two binary buffers of `arrow.parquet.variant`.
+Their bytes are not what a cell shows.
 
 `canonicalize()` gives such a field one of the types below, whose scalars convert
 to the text the value means, so that the rest of this package measures and
@@ -17,11 +18,12 @@ here is left as its storage, which is what pyarrow does with it too.
 
 from __future__ import annotations
 
-from typing import Any, Callable, Iterable
+from typing import Any, Callable, Iterable, cast
 
 import pyarrow as pa
 import pyarrow.types as pt
 
+from textual_fastdatatable.variant import VariantError, variant_to_python
 from textual_fastdatatable.wkb import WkbError, wkb_to_wkt
 
 EXTENSION_NAME_KEY = b"ARROW:extension:name"
@@ -71,17 +73,101 @@ class GeoArrowWkbType(pa.ExtensionType):
 
 
 def _geoarrow_wkb(storage_type: pa.DataType, serialized: bytes) -> pa.DataType | None:
-    if not (
-        pt.is_binary(storage_type)
-        or pt.is_large_binary(storage_type)
-        or pt.is_binary_view(storage_type)
-    ):
+    if not _is_binary(storage_type):
         return None
     return GeoArrowWkbType(storage_type, serialized)
 
 
+class ParquetVariantScalar(pa.ExtensionScalar):
+    """A variant, whose Python value is the one it holds."""
+
+    def as_py(self, **kwargs: Any) -> object:
+        storage = self.value
+        if storage is None:
+            return None
+        buffers: dict[str, bytes | None] = storage.as_py()
+        return _variant_or_buffers(buffers["metadata"], buffers["value"])
+
+
+class ParquetVariantArray(pa.ExtensionArray):
+    """A column of variants, decoded from its buffers in one pass."""
+
+    def to_pylist(self, **kwargs: Any) -> list[object]:
+        # a scalar per row costs more than decoding it does
+        storage = cast(pa.StructArray, self.storage)
+        metadata = storage.field("metadata").to_pylist()
+        values = storage.field("value").to_pylist()
+        present = storage.is_valid().to_pylist()
+        return [
+            _variant_or_buffers(row_metadata, row_value) if row_present else None
+            for row_present, row_metadata, row_value in zip(
+                present, metadata, values, strict=True
+            )
+        ]
+
+
+def _variant_or_buffers(metadata: bytes | None, value: bytes | None) -> object:
+    if metadata is None or value is None:
+        return None
+    try:
+        return variant_to_python(metadata, value)
+    except VariantError:
+        # tagged a variant but not one: the buffers are all it is known to be
+        return {"metadata": metadata, "value": value}
+
+
+class ParquetVariantType(pa.ExtensionType):
+    """`arrow.parquet.variant`: a value of any type, in Parquet's Variant encoding."""
+
+    values_share_a_type = False
+    """Read by the backend's measuring, which may measure one value for all."""
+
+    def __init__(self, storage_type: pa.DataType, serialized: bytes = b"") -> None:
+        self._serialized = serialized
+        super().__init__(storage_type, "arrow.parquet.variant")
+
+    def __arrow_ext_serialize__(self) -> bytes:
+        return self._serialized
+
+    @classmethod
+    def __arrow_ext_deserialize__(
+        cls, storage_type: pa.DataType, serialized: bytes
+    ) -> "ParquetVariantType":
+        return cls(storage_type, serialized)
+
+    def __arrow_ext_scalar_class__(self) -> type[pa.ExtensionScalar]:
+        return ParquetVariantScalar
+
+    def __arrow_ext_class__(self) -> type[pa.ExtensionArray]:
+        return ParquetVariantArray
+
+
+def _is_binary(data_type: pa.DataType) -> bool:
+    return (
+        pt.is_binary(data_type)
+        or pt.is_large_binary(data_type)
+        or pt.is_binary_view(data_type)
+    )
+
+
+def _parquet_variant(
+    storage_type: pa.DataType, serialized: bytes
+) -> pa.DataType | None:
+    # exactly the two buffers, so a shredded variant, which adds a `typed_value`,
+    # is left as its storage
+    if not pt.is_struct(storage_type):
+        return None
+    children = {child.name: child.type for child in _children(storage_type)}
+    if set(children) != {"metadata", "value"} or not all(
+        _is_binary(child_type) for child_type in children.values()
+    ):
+        return None
+    return ParquetVariantType(storage_type, serialized)
+
+
 EXTENSION_TYPES: dict[bytes, Callable[[pa.DataType, bytes], pa.DataType | None]] = {
     b"geoarrow.wkb": _geoarrow_wkb,
+    b"arrow.parquet.variant": _parquet_variant,
 }
 """The extension name a field declares, to the type this package reads it as.
 
