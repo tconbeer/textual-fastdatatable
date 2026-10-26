@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+- Variant columns now display the value they hold, like `{'a': 1, 'b': [1, 2]}`, instead
+  of their binary buffers. Any column tagged with the `arrow.parquet.variant` Arrow
+  extension type, as duckdb 2.0 returns a `VARIANT`, is decoded; a backend's
+  `source_data` still holds the original buffers.
+
 ## [0.19.3] - 2026-09-16
 
 - Geometry columns now display as text, like `POINT (-117.93367 34.34613)`, instead of

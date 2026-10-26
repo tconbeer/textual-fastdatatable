@@ -12,7 +12,7 @@ import pyarrow as pa
 import pyarrow.lib as pal
 import pyarrow.types as pt
 
-from textual_fastdatatable.extension_types import canonicalize
+from textual_fastdatatable.extension_types import ParquetVariantType, canonicalize
 
 AutoBackendType = Any
 
@@ -924,7 +924,10 @@ class ArrowBackend(DataTableBackend[pa.Table]):
             if _extension_value_is_its_storage(scalar):
                 return self._measure(_extension_storage(arr))
             value = scalar.as_py()
-            if _renders_at_a_fixed_width(value):
+            # a variant's values are each of their own type, so one measures itself
+            if _renders_at_a_fixed_width(value) and not isinstance(
+                arr.type, ParquetVariantType
+            ):
                 return _measure_width(value)
 
         # with some types we can measure the width more efficiently
