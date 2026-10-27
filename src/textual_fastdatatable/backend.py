@@ -13,6 +13,11 @@ import pyarrow.lib as pal
 import pyarrow.types as pt
 
 from textual_fastdatatable.extension_types import canonicalize
+from textual_fastdatatable.nanoseconds import (
+    holds_nanoseconds,
+    is_nanosecond_temporal,
+    nanosecond_values,
+)
 
 AutoBackendType = Any
 
@@ -643,6 +648,8 @@ class ArrowBackend(DataTableBackend[pa.Table]):
         self._column_content_widths: list[int] = []
         # default _render_markup to an "unset" value
         self._render_markup = None
+        self._nanoseconds_checked: pa.Table | None = None
+        self._holds_nanoseconds = False
 
     @staticmethod
     def _pydict_from_records(
@@ -682,6 +689,52 @@ class ArrowBackend(DataTableBackend[pa.Table]):
                 return datetime.min
 
         return None
+
+    @classmethod
+    def _to_pylist(cls, arr: pa._PandasConvertible) -> list[Any]:
+        """`arr.to_pylist()`, with the values pyarrow cannot convert handled."""
+        if is_nanosecond_temporal(arr.type):
+            return nanosecond_values(arr.cast(pa.int64()).to_pylist(), arr.type)
+        if not holds_nanoseconds(arr.type):
+            try:
+                return arr.to_pylist()
+            except OverflowError:
+                pass
+        return [cls._to_python(scalar) for scalar in arr]
+
+    @classmethod
+    def _to_python(cls, scalar: pa.Scalar) -> Any:
+        """`scalar.as_py()`, with the values pyarrow cannot convert handled."""
+        data_type = scalar.type
+        if not holds_nanoseconds(data_type):
+            try:
+                return scalar.as_py()
+            except OverflowError:
+                return cls._handle_overflow(scalar)
+        # pyarrow would convert the nanosecond values in here through pandas, or
+        # raise without it, so the container is rebuilt around them as as_py does
+        if not scalar.is_valid:
+            return None
+        if is_nanosecond_temporal(data_type):
+            stored = cast(
+                "pal.TimestampScalar | pal.Time64Scalar | pal.DurationScalar", scalar
+            )
+            return nanosecond_values([stored.value], data_type)[0]
+        if pt.is_struct(data_type):
+            struct = cast(pa.StructScalar, scalar)
+            return {
+                data_type.field(i).name: cls._to_python(struct[i])
+                for i in range(data_type.num_fields)
+            }
+        # a list of any kind, or a map: a list of its entries
+        values = cast(pa.ListScalar, scalar).values
+        if values is None:
+            return None
+        if pt.is_map(data_type):
+            return [
+                (cls._to_python(entry[0]), cls._to_python(entry[1])) for entry in values
+            ]
+        return cls._to_pylist(values)
 
     @classmethod
     def from_batches(
@@ -785,32 +838,30 @@ class ArrowBackend(DataTableBackend[pa.Table]):
         return self._column_content_widths
 
     def get_row_at(self, index: int) -> Sequence[Any]:
-        try:
-            row: dict[str, Any] = self.data.slice(index, length=1).to_pylist()[0]
-        except OverflowError:
-            return [
-                self._handle_overflow(self.data[i][index])
-                for i in range(len(self.columns))
-            ]
-        else:
-            return list(row.values())
+        row = self.data.slice(index, length=1)
+        if not self._data_holds_nanoseconds():
+            with suppress(OverflowError):
+                return list(row.to_pylist()[0].values())
+        return [self._to_python(column[0]) for column in row.columns]
+
+    def _data_holds_nanoseconds(self) -> bool:
+        """Whether any column of `self.data` is, or nests, a nanosecond type.
+
+        Checked once per table, since walking the schema costs about as much as
+        converting a row.
+        """
+        if self._nanoseconds_checked is not self.data:
+            self._holds_nanoseconds = any(
+                holds_nanoseconds(field.type) for field in self.data.schema
+            )
+            self._nanoseconds_checked = self.data
+        return self._holds_nanoseconds
 
     def get_column_at(self, column_index: int) -> list[Any]:
-        try:
-            values = self.data[column_index].to_pylist()
-        except OverflowError:
-            # TODO: consider registering a scalar UDF here for parallel processing
-            return [self._handle_overflow(scalar) for scalar in self.data[column_index]]
-        else:
-            return values
+        return self._to_pylist(self.data[column_index])
 
     def get_cell_at(self, row_index: int, column_index: int) -> Any:
-        scalar = self.data[column_index][row_index]
-        try:
-            value = scalar.as_py()
-        except OverflowError:
-            value = self._handle_overflow(scalar)
-        return value
+        return self._to_python(self.data[column_index][row_index])
 
     def append_column(self, label: str, default: Any | None = None) -> int:
         """
@@ -863,13 +914,25 @@ class ArrowBackend(DataTableBackend[pa.Table]):
                 f"Cannot update a cell of {column.type}: its values are not the "
                 "values it stores."
             )
-        pycolumn = self.get_column_at(column_index=column_index)
-        pycolumn[row_index] = value
-        new_type = pa.string() if pt.is_null(column.type) else column.type
+        if holds_nanoseconds(column.type):
+            # a nanosecond value would come back from Python without its
+            # nanoseconds, so only the updated row is converted
+            chunks = cast(pa.ChunkedArray, column)
+            new_column: pa.Array | pa.ChunkedArray = pa.chunked_array(
+                [
+                    *chunks.slice(0, row_index).chunks,
+                    cast(pa.Array, pa.array([value], type=column.type)),
+                    *chunks.slice(row_index + 1).chunks,
+                ],
+                type=column.type,
+            )
+        else:
+            pycolumn = self.get_column_at(column_index=column_index)
+            pycolumn[row_index] = value
+            new_type = pa.string() if pt.is_null(column.type) else column.type
+            new_column = pa.array(pycolumn, type=new_type)
         self.data = self.data.set_column(
-            column_index,
-            self.data.column_names[column_index],
-            pa.array(pycolumn, type=new_type),
+            column_index, self.data.column_names[column_index], new_column
         )
         if self._column_content_widths:
             self._column_content_widths[column_index] = max(
@@ -909,11 +972,7 @@ class ArrowBackend(DataTableBackend[pa.Table]):
     def _value_blocks(self, arr: pa._PandasConvertible) -> Iterator[list[Any]]:
         """The column's values as Python, `_VALUE_BLOCK_SIZE` of them at a time."""
         for offset in range(0, len(arr), _VALUE_BLOCK_SIZE):
-            block = arr.slice(offset, _VALUE_BLOCK_SIZE)
-            try:
-                yield block.to_pylist()
-            except OverflowError:
-                yield [self._handle_overflow(scalar) for scalar in block]
+            yield self._to_pylist(arr.slice(offset, _VALUE_BLOCK_SIZE))
 
     def _measure(self, arr: pa._PandasConvertible) -> int:
         # deferred with the rest of pyarrow.compute; see `_register_udf`
@@ -963,7 +1022,12 @@ class ArrowBackend(DataTableBackend[pa.Table]):
             return max([_measure_width(el) for el in [col_max, col_min]])
         elif pt.is_temporal(arr.type):
             try:
-                value = arr.drop_null()[0].as_py()
+                first = arr.drop_null()[0]
+                value = (
+                    self._to_python(first)
+                    if is_nanosecond_temporal(arr.type)
+                    else first.as_py()
+                )
             except OverflowError:
                 return 26  # need space for the infinity sign and a space
             except IndexError:

@@ -179,6 +179,21 @@ WKT would return to WKB storage as the bytes of its own text, rewriting rows the
 never touched. It raises for those, on the same `_extension_value_is_its_storage` test,
 rather than letting the round trip happen.
 
+pyarrow converts a nanosecond `timestamp`, `time64` or `duration` through pandas when it
+can import it, and raises when it cannot and a value has digits past its microsecond
+([tconbeer/harlequin#1207](https://github.com/tconbeer/harlequin/issues/1207)). So
+`ArrowBackend` never asks it to: `_to_pylist` and `_to_python` are where every value
+becomes Python, and they hand each type that is or nests one
+(`nanoseconds.holds_nanoseconds`) to `nanoseconds.nanosecond_values`, which converts the
+microseconds through Arrow, time zone and all, and keeps the rest on a `datetime`,
+`time` or `timedelta` subclass. A cell renders as its base type does; `str()` keeps every
+digit. `±(2**63 - 1)` is duckdb's ±infinity and becomes `datetime.max`/`min`, as an
+overflowing timestamp of any other unit does. `update_cell` splices the new value into
+such a column rather than writing it back from Python, which would drop every other
+row's nanoseconds. `get_row_at` keeps pyarrow's one-call conversion for a table holding
+none, and checks once per table, since walking a schema costs about as much as
+converting a row.
+
 Every UDF is registered through `_register_udf`, which registers a name at most once:
 `pc.register_scalar_function` raises for a name that is taken **and drops a reference to
 the function already registered under it**, so re-registering segfaults pyarrow a couple
@@ -264,8 +279,8 @@ message on `ctrl+c`/`super+c` — this requires the host app to be built with
     `Console` that module builds on its first measurement) on first call. Backends must
     not import rich or `format` at module scope, or construct a `Console` in `__init__`.
     A string column that is all ASCII never calls it, so an ASCII table never pays for
-    rich at all. `extension_types`, `wkb` and `variant`, which `backend` imports at module
-    scope, are held to the same rule: pyarrow and the stdlib only.
+    rich at all. `extension_types`, `wkb`, `variant` and `nanoseconds`, which `backend`
+    imports at module scope, are held to the same rule: pyarrow and the stdlib only.
 
   `tests/unit_tests/test_lazy_imports.py` asserts all four, in a subprocess. To check by
   hand (all `False`; the import costs ~111 modules on 3.10 against the required deps, 443
