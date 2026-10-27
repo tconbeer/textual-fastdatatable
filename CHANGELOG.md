@@ -8,6 +8,12 @@ All notable changes to this project will be documented in this file.
   of their binary buffers. Any column tagged with the `arrow.parquet.variant` Arrow
   extension type, as duckdb 2.0 returns a `VARIANT`, is decoded; a backend's
   `source_data` still holds the original buffers.
+- Nanosecond timestamps, times and durations (like duckdb's `TIMESTAMP_NS`) no longer
+  crash the table when pandas is not installed. Their values are now always a plain
+  `datetime`, `time` or `timedelta`, truncated to microseconds, where with pandas
+  installed they used to be a `pd.Timestamp` or `pd.Timedelta`. duckdb's infinite
+  `TIMESTAMP_NS` values now render as ∞ instead of a date in 1677 or 2262
+  ([tconbeer/harlequin#1207](https://github.com/tconbeer/harlequin/issues/1207)).
 
 ## [0.19.3] - 2026-09-16
 

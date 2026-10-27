@@ -71,6 +71,17 @@ for large immutable data.
 `max_rows` truncates the displayed data while `source_data`/`source_row_count` keep
 reporting the full input — the widget shows both counts.
 
+With pandas installed, pyarrow returns pandas types for nanosecond timestamps and
+durations and truncates a `time64[ns]`; without it, it raises for any of them with digits
+past the microsecond ([tconbeer/harlequin#1207](https://github.com/tconbeer/harlequin/issues/1207)).
+So `ArrowBackend` casts every column that is or nests one to microseconds before it
+becomes Python (`_microsecond_type`, `_in_microseconds`), and takes apart value by value
+the types Arrow cannot cast, like unions. A column's own timestamps, and a dictionary's,
+are floored and keep duckdb's ±infinity as ∞; nested ones are truncated, in every getter
+alike. `_microsecond_types` caches the target type per column, so every mutation that
+changes the schema must keep it in step; `update_cell` splices into such a column, so
+the stored nanoseconds survive.
+
 ### Column widths
 
 `column_content_widths` is the hot path for first paint. Each backend computes it with
@@ -251,9 +262,10 @@ message on `ctrl+c`/`super+c` — this requires the host app to be built with
     convenience import at the top of `__init__.py` silently undoes this.
   - `pyarrow.parquet` is imported inside `ArrowBackend.from_parquet`, its only use site.
     Any module-scope `pq.` use undoes this.
-  - `pyarrow.compute` is imported inside the four functions that use it — `_register_udf`,
-    `_measure_cells`, `_measure_strings` and `ArrowBackend._measure` — because every use
-    of it in this module measures a column, so a consumer that only normalizes through
+  - `pyarrow.compute` is imported inside the five functions that use it — `_register_udf`,
+    `_measure_cells`, `_measure_strings`, `ArrowBackend._measure` and `_in_microseconds` —
+    because every use of it in this module measures a column or converts one of
+    nanosecond timestamps to Python, so a consumer that only normalizes through
     `create_backend()` never needs it. It costs ~68ms, more than `pyarrow` itself, and
     halves what importing `backend` costs without the `polars` extra (133ms → 68ms).
     Measuring is unaffected: the import is a `sys.modules` lookup once per column, and
