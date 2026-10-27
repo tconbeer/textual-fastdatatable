@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.19.5] - 2026-10-27
+
 - duckdb `BIGNUM` (formerly `VARINT`) columns now display the integer they hold, like
   `123456789012345678901234567890`, instead of their bytes, including when nested in a
   list, struct, or map; a backend's `source_data` still holds the original bytes
@@ -282,7 +284,8 @@ All notable changes to this project will be documented in this file.
 
 - Initial release. Adds DataTable and ArrowBackend, which is 1000x faster for datasets of 500k records or more.
 
-[unreleased]: https://github.com/tconbeer/textual-fastdatatable/compare/0.19.4...HEAD
+[unreleased]: https://github.com/tconbeer/textual-fastdatatable/compare/0.19.5...HEAD
+[0.19.5]: https://github.com/tconbeer/textual-fastdatatable/compare/0.19.4...0.19.5
 [0.19.4]: https://github.com/tconbeer/textual-fastdatatable/compare/0.19.3...0.19.4
 [0.19.3]: https://github.com/tconbeer/textual-fastdatatable/compare/0.19.2...0.19.3
 [0.19.2]: https://github.com/tconbeer/textual-fastdatatable/compare/0.19.1...0.19.2
