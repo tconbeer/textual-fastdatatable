@@ -55,12 +55,11 @@ def encode(value: int) -> bytes:
 
 
 def bignum_array(
-    *values: int | bytes | None, extension_type: pa.DataType = DUCKDB_BIGNUM
+    *values: int | bytes | None, extension_type: pa.OpaqueType = DUCKDB_BIGNUM
 ) -> pa.Array:
-    storage_type = getattr(extension_type, "storage_type", pa.binary())
     storage = pa.array(
         [encode(value) if isinstance(value, int) else value for value in values],
-        type=storage_type,
+        type=extension_type.storage_type,
     )
     assert isinstance(storage, pa.Array)
     return pa.ExtensionArray.from_storage(extension_type, storage)
@@ -114,7 +113,7 @@ def test_bytes_that_are_not_a_bignum_raise(data: bytes) -> None:
 @pytest.mark.parametrize(
     "extension_type", [DUCKDB_BIGNUM, DUCKDB_VARINT], ids=["bignum", "varint"]
 )
-def test_duckdbs_opaque_type_becomes_a_bignum(extension_type: pa.DataType) -> None:
+def test_duckdbs_opaque_type_becomes_a_bignum(extension_type: pa.OpaqueType) -> None:
     canonicalized = canonicalize(
         pa.table({"n": bignum_array(1, -1, None, extension_type=extension_type)})
     )
@@ -126,13 +125,28 @@ def test_duckdbs_opaque_type_becomes_a_bignum(extension_type: pa.DataType) -> No
 def test_duckdb_1_1s_tagged_varint_becomes_a_bignum() -> None:
     field = pa.field("n", pa.binary(), metadata=DUCKDB_1_1_VARINT)
     data = pa.Table.from_arrays(
-        [pa.array([encode(10**30)], type=pa.binary())], schema=pa.schema([field])
+        [pa.array([encode(10**30), encode(-1)], type=pa.binary())],
+        schema=pa.schema([field]),
     )
 
     canonicalized = canonicalize(data)
 
     assert isinstance(canonicalized.schema.field(0).type, DuckDBBignumType)
-    assert canonicalized.column(0).to_pylist() == [10**30]
+    assert canonicalized.column(0).to_pylist() == [10**30, -1]
+
+
+def test_duckdb_1_1s_tagged_varint_sorts() -> None:
+    """Sorting casts the column back to its type, which has to come out the same."""
+    field = pa.field("n", pa.binary(), metadata=DUCKDB_1_1_VARINT)
+    data = pa.Table.from_arrays(
+        [pa.array([encode(10**30), encode(-1)], type=pa.binary())],
+        schema=pa.schema([field]),
+    )
+    backend = ArrowBackend(data)
+
+    backend.sort("n")
+
+    assert backend.get_column_at(0) == [-1, 10**30]
 
 
 @pytest.mark.parametrize(
@@ -145,9 +159,9 @@ def test_duckdb_1_1s_tagged_varint_becomes_a_bignum() -> None:
     ids=["another vendor", "another type", "not binary"],
 )
 def test_an_opaque_type_that_is_not_duckdbs_bignum_is_left_alone(
-    extension_type: pa.DataType,
+    extension_type: pa.OpaqueType,
 ) -> None:
-    storage = pa.nulls(1, getattr(extension_type, "storage_type", pa.binary()))
+    storage = pa.nulls(1, extension_type.storage_type)
     data = pa.table({"o": pa.ExtensionArray.from_storage(extension_type, storage)})
 
     assert canonicalize(data) is data
@@ -188,7 +202,7 @@ def test_a_bignum_column_is_as_wide_as_its_widest_integer() -> None:
 
 
 def test_a_bignum_past_pythons_text_limit_measures_and_renders() -> None:
-    value = int("9" * 5000)
+    value = 10**5000 - 1
     backend = ArrowBackend(bignum_table(value))
 
     assert backend.column_content_widths == [measure_width(Decimal(value))]
@@ -253,7 +267,9 @@ def nested_array(nest: Callable[[pa.Field], pa.DataType], value: object) -> pa.A
             id="struct",
         ),
         pytest.param(
-            lambda field: pa.map_(field, field),
+            lambda field: pa.map_(
+                field.with_name("key").with_nullable(False), field.with_name("value")
+            ),
             [(encode(3), encode(4))],
             [(3, 4)],
             id="map",
