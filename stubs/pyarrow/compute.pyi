@@ -47,6 +47,15 @@ def any(  # noqa: A001
     options: ScalarAggregateOptions | None = None,
     memory_pool: MemoryPool | None = None,
 ) -> Scalar: ...
+def min_max(
+    array: _PandasConvertible,
+    /,
+    *,
+    skip_nulls: bool = True,
+    min_count: int = 1,
+    options: ScalarAggregateOptions | None = None,
+    memory_pool: MemoryPool | None = None,
+) -> Scalar: ...
 def or_(
     x: _PandasConvertible,
     y: _PandasConvertible,
@@ -143,6 +152,27 @@ def add(
     *,
     memory_pool: MemoryPool | None = None,
 ) -> _PandasConvertible: ...
+def less_equal(
+    x: _PandasConvertible,
+    y: _PandasConvertible | int,
+    /,
+    *,
+    memory_pool: MemoryPool | None = None,
+) -> _PandasConvertible: ...
+def subtract(
+    x: _PandasConvertible,
+    y: _PandasConvertible | int,
+    /,
+    *,
+    memory_pool: MemoryPool | None = None,
+) -> _PandasConvertible: ...
+def divide(
+    dividend: _PandasConvertible,
+    divisor: _PandasConvertible | int,
+    /,
+    *,
+    memory_pool: MemoryPool | None = None,
+) -> _PandasConvertible: ...
 def min_element_wise(
     *args: _PandasConvertible,
     skip_nulls: bool = True,
@@ -151,8 +181,8 @@ def min_element_wise(
 ) -> _PandasConvertible: ...
 def if_else(
     cond: _PandasConvertible,
-    left: _PandasConvertible,
-    right: _PandasConvertible,
+    left: _PandasConvertible | int,
+    right: _PandasConvertible | int,
     /,
     *,
     memory_pool: MemoryPool | None = None,

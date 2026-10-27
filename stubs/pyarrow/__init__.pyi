@@ -11,7 +11,32 @@ class DataType:
 
 class Date32Type(DataType): ...
 class Date64Type(DataType): ...
-class TimestampType(DataType): ...
+
+class TimestampType(DataType):
+    @property
+    def unit(self) -> str: ...
+    @property
+    def tz(self) -> str | None: ...
+
+class Time64Type(DataType):
+    @property
+    def unit(self) -> str: ...
+
+class DurationType(DataType):
+    @property
+    def unit(self) -> str: ...
+
+class RunEndEncodedType(DataType):
+    @property
+    def run_end_type(self) -> DataType: ...
+    @property
+    def value_type(self) -> DataType: ...
+
+class UnionType(DataType):
+    @property
+    def mode(self) -> str: ...
+    @property
+    def type_codes(self) -> list[int]: ...
 
 class ListType(DataType):
     @property
@@ -32,6 +57,10 @@ class MapType(DataType):
 class DictionaryType(DataType):
     @property
     def value_type(self) -> DataType: ...
+    @property
+    def index_type(self) -> DataType: ...
+    @property
+    def ordered(self) -> bool: ...
 
 class BaseExtensionType(DataType):
     @property
@@ -74,6 +103,14 @@ def map_(
     key_type: DataType | Field, item_type: DataType | Field, keys_sorted: bool = False
 ) -> DataType: ...
 def struct(fields: Iterable[Any]) -> DataType: ...
+def list_view(value_type: DataType | Field) -> DataType: ...
+def dictionary(
+    index_type: DataType, value_type: DataType, ordered: bool = False
+) -> DataType: ...
+def run_end_encoded(run_end_type: DataType, value_type: DataType) -> DataType: ...
+def union(
+    child_fields: Iterable[Field], mode: str, type_codes: list[int] | None = None
+) -> DataType: ...
 def field(
     name: str,
     type: DataType,  # noqa: A002
@@ -121,6 +158,27 @@ class Scalar:
     def as_py(self) -> Any: ...
     @property
     def type(self) -> DataType: ...
+    @property
+    def is_valid(self) -> bool: ...
+
+class ListScalar(Scalar):
+    @property
+    def values(self) -> Array | None: ...
+
+class StructScalar(Scalar):
+    def __getitem__(self, key: int | str) -> Scalar: ...
+
+class UnionScalar(Scalar):
+    @property
+    def value(self) -> Scalar: ...
+
+class RunEndEncodedScalar(Scalar):
+    @property
+    def value(self) -> Scalar: ...
+
+class DictionaryScalar(Scalar):
+    @property
+    def value(self) -> Scalar: ...
 
 class ExtensionScalar(Scalar):
     @property
@@ -164,6 +222,23 @@ class ExtensionArray(Array):
     def from_storage(typ: DataType, storage: Array) -> "ExtensionArray": ...
     @property
     def storage(self) -> Array: ...
+
+class UnionArray(Array):
+    @staticmethod
+    def from_sparse(
+        types: Array, children: list[Array], field_names: list[str] | None = None
+    ) -> UnionArray: ...
+    @staticmethod
+    def from_dense(
+        types: Array,
+        value_offsets: Array,
+        children: list[Array],
+        field_names: list[str] | None = None,
+    ) -> UnionArray: ...
+
+class RunEndEncodedArray(Array):
+    @staticmethod
+    def from_arrays(run_ends: Array, values: Array) -> RunEndEncodedArray: ...
 
 class ChunkedArray(_PandasConvertible):
     @property
@@ -249,6 +324,8 @@ class Table(_Tabular):
         safe: bool = True,
     ) -> "Table": ...
     def to_batches(self) -> list[RecordBatch]: ...
+    # a pandas DataFrame, typed as Any for the reason `from_pandas` is
+    def to_pandas(self) -> Any: ...
 
 def scalar(value: Any, type: DataType) -> Scalar: ...  # noqa: A002
 def array(

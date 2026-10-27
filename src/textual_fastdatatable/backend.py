@@ -330,6 +330,108 @@ def _arrow_casts_to_display_text(dtype: pa.DataType) -> bool:
     )
 
 
+_INT64_MAX = 2**63 - 1
+"""duckdb's `'infinity'::timestamp_ns`; its `'-infinity'` is the negation."""
+
+
+def _microsecond_type(data_type: pa.DataType) -> pa.DataType | None:
+    """`data_type` with every nanosecond temporal type in it at microseconds.
+
+    None when it holds none. With pandas installed, pyarrow returns pandas types for
+    nanosecond timestamps and durations and truncates a `time64[ns]`; without it,
+    it raises for any of them with digits past the microsecond.
+    """
+    if pt.is_timestamp(data_type):
+        return pa.timestamp("us", tz=data_type.tz) if data_type.unit == "ns" else None
+    if pt.is_time64(data_type):
+        return pa.time64("us") if data_type.unit == "ns" else None
+    if pt.is_duration(data_type):
+        return pa.duration("us") if data_type.unit == "ns" else None
+    if pt.is_dictionary(data_type):
+        value_type = _microsecond_type(data_type.value_type)
+        if value_type is None:
+            return None
+        return pa.dictionary(data_type.index_type, value_type, data_type.ordered)
+    if pt.is_run_end_encoded(data_type):
+        value_type = _microsecond_type(data_type.value_type)
+        if value_type is None:
+            return None
+        return pa.run_end_encoded(data_type.run_end_type, value_type)
+    if pt.is_map(data_type):
+        entries = _microsecond_fields([data_type.key_field, data_type.item_field])
+        if entries is None:
+            return None
+        return pa.map_(entries[0], entries[1], keys_sorted=data_type.keys_sorted)
+    if (
+        pt.is_list(data_type)
+        or pt.is_large_list(data_type)
+        or pt.is_fixed_size_list(data_type)
+        or pt.is_list_view(data_type)
+    ):
+        value_fields = _microsecond_fields([data_type.value_field])
+        if value_fields is None:
+            return None
+        if pt.is_large_list(data_type):
+            return pa.large_list(value_fields[0])
+        if pt.is_fixed_size_list(data_type):
+            return pa.list_(value_fields[0], data_type.list_size)
+        if pt.is_list_view(data_type):
+            return pa.list_view(value_fields[0])
+        return pa.list_(value_fields[0])
+    if pt.is_struct(data_type) or pt.is_union(data_type):
+        fields = _microsecond_fields(
+            [data_type.field(i) for i in range(data_type.num_fields)]
+        )
+        if fields is None:
+            return None
+        if pt.is_union(data_type):
+            return pa.union(fields, data_type.mode, data_type.type_codes)
+        return pa.struct(fields)
+    return None
+
+
+def _microsecond_fields(fields: list[pa.Field]) -> list[pa.Field] | None:
+    """`fields` with their types at microseconds, or None if none changed."""
+    types = [_microsecond_type(field.type) for field in fields]
+    if all(new_type is None for new_type in types):
+        return None
+    return [
+        field if new_type is None else field.with_type(new_type)
+        for field, new_type in zip(fields, types, strict=True)
+    ]
+
+
+def _in_microseconds(
+    arr: pa._PandasConvertible, us_type: pa.DataType
+) -> pa._PandasConvertible | None:
+    """`arr` cast to `us_type`, or None if Arrow cannot cast it (a union, say)."""
+    if pt.is_timestamp(arr.type):
+        # deferred with the rest of pyarrow.compute; see `_register_udf`
+        import pyarrow.compute as pc
+
+        stored = arr.cast(pa.int64())
+        bounds = pc.min_max(stored).as_py()
+        # Arrow's cast truncates, which is a floor for every value but these
+        if bounds["min"] is None or (bounds["min"] >= 0 and bounds["max"] < _INT64_MAX):
+            return arr.cast(us_type, safe=False)
+        # floored, so that 1ns before 1970 is in 1969
+        floored = pc.divide(
+            pc.subtract(stored, pc.if_else(pc.less(stored, 0), 999, 0)), 1_000
+        )
+        # duckdb's infinities become the microseconds that overflow a datetime,
+        # as an infinite timestamp of any other unit does
+        microseconds = pc.if_else(
+            pc.greater_equal(stored, _INT64_MAX),
+            _INT64_MAX,
+            pc.if_else(pc.less_equal(stored, -_INT64_MAX), -_INT64_MAX, floored),
+        )
+        return microseconds.cast(us_type)
+    try:
+        return arr.cast(us_type, safe=False)
+    except pal.ArrowNotImplementedError:
+        return None
+
+
 def create_backend(
     data: "AutoBackendType",
     max_rows: int | None = None,
@@ -643,6 +745,10 @@ class ArrowBackend(DataTableBackend[pa.Table]):
         self._column_content_widths: list[int] = []
         # default _render_markup to an "unset" value
         self._render_markup = None
+        # per column; no mutation changes a column's type to or from one of these
+        self._microsecond_types = [
+            _microsecond_type(field.type) for field in self.data.schema
+        ]
 
     @staticmethod
     def _pydict_from_records(
@@ -682,6 +788,62 @@ class ArrowBackend(DataTableBackend[pa.Table]):
                 return datetime.min
 
         return None
+
+    @classmethod
+    def _to_pylist(
+        cls, arr: pa._PandasConvertible, us_type: pa.DataType | None
+    ) -> list[Any]:
+        """`arr.to_pylist()`, where `us_type` is `_microsecond_type(arr.type)`."""
+        if us_type is not None:
+            converted = _in_microseconds(arr, us_type)
+            if converted is None:
+                return [cls._to_python(scalar) for scalar in arr]
+            arr = converted
+        try:
+            return arr.to_pylist()
+        except OverflowError:
+            return [cls._to_python(scalar) for scalar in arr]
+
+    @classmethod
+    def _to_python(cls, scalar: pa.Scalar) -> Any:
+        """`scalar.as_py()`, with nanoseconds truncated and overflows handled."""
+        data_type = scalar.type
+        us_type = _microsecond_type(data_type)
+        if us_type is None:
+            try:
+                return scalar.as_py()
+            except OverflowError:
+                return cls._handle_overflow(scalar)
+        if not scalar.is_valid:
+            return None
+        # a type Arrow cannot cast is taken apart, down to values it can
+        if (
+            pt.is_union(data_type)
+            or pt.is_run_end_encoded(data_type)
+            or pt.is_dictionary(data_type)
+        ):
+            return cls._to_python(
+                cast(
+                    "pa.UnionScalar | pa.RunEndEncodedScalar | pa.DictionaryScalar",
+                    scalar,
+                ).value
+            )
+        if pt.is_struct(data_type):
+            struct = cast(pa.StructScalar, scalar)
+            return {
+                data_type.field(i).name: cls._to_python(struct[i])
+                for i in range(data_type.num_fields)
+            }
+        if pt.is_map(data_type):
+            entries = cast(pa.StructArray, cast(pa.ListScalar, scalar).values)
+            return [
+                (cls._to_python(entry[0]), cls._to_python(entry[1]))
+                for entry in entries
+            ]
+        if not pt.is_nested(data_type):
+            return cls._to_pylist(pa.array([scalar], type=data_type), us_type)[0]
+        values = cast(pa.Array, cast(pa.ListScalar, scalar).values)
+        return cls._to_pylist(values, _microsecond_type(values.type))
 
     @classmethod
     def from_batches(
@@ -785,32 +947,24 @@ class ArrowBackend(DataTableBackend[pa.Table]):
         return self._column_content_widths
 
     def get_row_at(self, index: int) -> Sequence[Any]:
-        try:
-            row: dict[str, Any] = self.data.slice(index, length=1).to_pylist()[0]
-        except OverflowError:
-            return [
-                self._handle_overflow(self.data[i][index])
-                for i in range(len(self.columns))
-            ]
-        else:
-            return list(row.values())
+        row = self.data.slice(index, length=1)
+        if not any(self._microsecond_types):
+            with suppress(OverflowError):
+                return list(row.to_pylist()[0].values())
+        return [
+            self._to_pylist(column, us_type)[0]
+            for column, us_type in zip(
+                row.columns, self._microsecond_types, strict=True
+            )
+        ]
 
     def get_column_at(self, column_index: int) -> list[Any]:
-        try:
-            values = self.data[column_index].to_pylist()
-        except OverflowError:
-            # TODO: consider registering a scalar UDF here for parallel processing
-            return [self._handle_overflow(scalar) for scalar in self.data[column_index]]
-        else:
-            return values
+        return self._to_pylist(
+            self.data[column_index], self._microsecond_types[column_index]
+        )
 
     def get_cell_at(self, row_index: int, column_index: int) -> Any:
-        scalar = self.data[column_index][row_index]
-        try:
-            value = scalar.as_py()
-        except OverflowError:
-            value = self._handle_overflow(scalar)
-        return value
+        return self._to_python(self.data[column_index][row_index])
 
     def append_column(self, label: str, default: Any | None = None) -> int:
         """
@@ -823,6 +977,7 @@ class ArrowBackend(DataTableBackend[pa.Table]):
             arr = arr.fill_null(str(default))
 
         self.data = self.data.append_column(label, arr)
+        self._microsecond_types.append(None)
         if self._column_content_widths:
             self._column_content_widths.append(_measure_width(default))
         return self.data.num_columns - 1
@@ -863,13 +1018,25 @@ class ArrowBackend(DataTableBackend[pa.Table]):
                 f"Cannot update a cell of {column.type}: its values are not the "
                 "values it stores."
             )
-        pycolumn = self.get_column_at(column_index=column_index)
-        pycolumn[row_index] = value
-        new_type = pa.string() if pt.is_null(column.type) else column.type
+        if self._microsecond_types[column_index] is not None:
+            # the other rows would come back from Python without their
+            # nanoseconds, so only the updated one is converted
+            chunks = cast(pa.ChunkedArray, column)
+            new_column: pa.Array | pa.ChunkedArray = pa.chunked_array(
+                [
+                    *chunks.slice(0, row_index).chunks,
+                    cast(pa.Array, pa.array([value], type=column.type)),
+                    *chunks.slice(row_index + 1).chunks,
+                ],
+                type=column.type,
+            )
+        else:
+            pycolumn = self.get_column_at(column_index=column_index)
+            pycolumn[row_index] = value
+            new_type = pa.string() if pt.is_null(column.type) else column.type
+            new_column = pa.array(pycolumn, type=new_type)
         self.data = self.data.set_column(
-            column_index,
-            self.data.column_names[column_index],
-            pa.array(pycolumn, type=new_type),
+            column_index, self.data.column_names[column_index], new_column
         )
         if self._column_content_widths:
             self._column_content_widths[column_index] = max(
@@ -908,12 +1075,14 @@ class ArrowBackend(DataTableBackend[pa.Table]):
 
     def _value_blocks(self, arr: pa._PandasConvertible) -> Iterator[list[Any]]:
         """The column's values as Python, `_VALUE_BLOCK_SIZE` of them at a time."""
+        us_type = _microsecond_type(arr.type)
+        if us_type is not None:
+            # once, not per block: casting a slice of a list casts all its values
+            converted = _in_microseconds(arr, us_type)
+            if converted is not None:
+                arr, us_type = converted, None
         for offset in range(0, len(arr), _VALUE_BLOCK_SIZE):
-            block = arr.slice(offset, _VALUE_BLOCK_SIZE)
-            try:
-                yield block.to_pylist()
-            except OverflowError:
-                yield [self._handle_overflow(scalar) for scalar in block]
+            yield self._to_pylist(arr.slice(offset, _VALUE_BLOCK_SIZE), us_type)
 
     def _measure(self, arr: pa._PandasConvertible) -> int:
         # deferred with the rest of pyarrow.compute; see `_register_udf`
@@ -963,7 +1132,13 @@ class ArrowBackend(DataTableBackend[pa.Table]):
             return max([_measure_width(el) for el in [col_max, col_min]])
         elif pt.is_temporal(arr.type):
             try:
-                value = arr.drop_null()[0].as_py()
+                first = arr.drop_null().slice(0, 1)
+                us_type = _microsecond_type(arr.type)
+                if us_type is not None:
+                    first = cast(
+                        "pa._PandasConvertible", _in_microseconds(first, us_type)
+                    )
+                value = first[0].as_py()
             except OverflowError:
                 return 26  # need space for the infinity sign and a space
             except IndexError:

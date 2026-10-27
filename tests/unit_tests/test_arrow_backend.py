@@ -109,10 +109,15 @@ TS_NS = 1_704_164_645_123_456_789
 TS_US = datetime(2024, 1, 2, 3, 4, 5, 123456)
 
 
-def _ns_array(values: list[int | None], data_type: pa.DataType) -> pa.Array:
-    array = pa.array(values, type=pa.int64()).cast(data_type)
+def _array(values: list[Any], data_type: pa.DataType | None = None) -> pa.Array:
+    """`pa.array`, narrowed: these arrays are never chunked."""
+    array = pa.array(values, type=data_type)
     assert isinstance(array, pa.Array)
     return array
+
+
+def _ns_array(values: list[int | None], data_type: pa.DataType) -> pa.Array:
+    return _array(values, pa.int64()).cast(data_type)
 
 
 @pytest.mark.parametrize(
@@ -165,44 +170,62 @@ def test_infinite_nanosecond_timestamps() -> None:
     assert backend.column_content_widths == [26]
 
 
-def _sparse_union(timestamps: pa.Array) -> pa.Array:
-    return pa.UnionArray.from_sparse(
-        pa.array([0, 1], type=pa.int8()),
-        [timestamps, pa.array([7, 8])],
-        field_names=["ts", "n"],
-    )
+def _nested(values: list[Any], int_type: pa.DataType, ns_type: pa.DataType) -> Any:
+    return pa.array(values, type=int_type).cast(ns_type)
 
 
-def _dense_union(timestamps: pa.Array) -> pa.Array:
-    return pa.UnionArray.from_dense(
-        pa.array([0, 1], type=pa.int8()),
-        pa.array([0, 0], type=pa.int32()),
-        [timestamps.slice(0, 1), pa.array([7])],
-        field_names=["ts", "n"],
-    )
+TIMESTAMPS = _ns_array([TS_NS, TS_NS], pa.timestamp("ns"))
+_UNION_CHILDREN = ["ts", "n"]
 
 
 @pytest.mark.parametrize(
-    "build,expected",
+    "column,expected",
     [
-        (lambda ts: pa.ListArray.from_arrays([0, 2, 2], ts), [[TS_US, TS_US], []]),
         (
-            lambda ts: pa.StructArray.from_arrays([ts, pa.array([1, 2])], ["ts", "n"]),
+            _nested(
+                [[TS_NS, TS_NS], []],
+                pa.list_(pa.int64()),
+                pa.list_(pa.timestamp("ns")),
+            ),
+            [[TS_US, TS_US], []],
+        ),
+        (
+            _nested(
+                [{"ts": TS_NS, "n": 1}, {"ts": TS_NS, "n": 2}],
+                pa.struct([("ts", pa.int64()), ("n", pa.int64())]),
+                pa.struct([("ts", pa.timestamp("ns")), ("n", pa.int64())]),
+            ),
             [{"ts": TS_US, "n": 1}, {"ts": TS_US, "n": 2}],
         ),
         (
-            lambda ts: pa.MapArray.from_arrays([0, 1, 2], pa.array(["a", "b"]), ts),
+            _nested(
+                [[("a", TS_NS)], [("b", TS_NS)]],
+                pa.map_(pa.string(), pa.int64()),
+                pa.map_(pa.string(), pa.timestamp("ns")),
+            ),
             [[("a", TS_US)], [("b", TS_US)]],
         ),
+        (TIMESTAMPS.dictionary_encode(), [TS_US, TS_US]),
         (
-            lambda ts: pa.DictionaryArray.from_arrays(pa.array([0, 0]), ts),
-            [TS_US, TS_US],
+            pa.UnionArray.from_sparse(
+                _array([0, 1], pa.int8()),
+                [TIMESTAMPS, _array([7, 8])],
+                field_names=_UNION_CHILDREN,
+            ),
+            [TS_US, 8],
         ),
-        (_sparse_union, [TS_US, 8]),
-        (_dense_union, [TS_US, 7]),
         (
-            lambda ts: pa.RunEndEncodedArray.from_arrays(
-                pa.array([2], type=pa.int32()), ts.slice(0, 1)
+            pa.UnionArray.from_dense(
+                _array([0, 1], pa.int8()),
+                _array([0, 0], pa.int32()),
+                [TIMESTAMPS.slice(0, 1), _array([7])],
+                field_names=_UNION_CHILDREN,
+            ),
+            [TS_US, 7],
+        ),
+        (
+            pa.RunEndEncodedArray.from_arrays(
+                _array([2], pa.int32()), TIMESTAMPS.slice(0, 1)
             ),
             [TS_US, TS_US],
         ),
@@ -210,9 +233,8 @@ def _dense_union(timestamps: pa.Array) -> pa.Array:
     ids=["list", "struct", "map", "dictionary", "sparse_union", "dense_union", "ree"],
 )
 def test_nested_nanosecond_values_are_truncated_to_microseconds(
-    build: Any, expected: list[Any]
+    column: pa.Array, expected: list[Any]
 ) -> None:
-    column = build(_ns_array([TS_NS, TS_NS], pa.timestamp("ns")))
     backend = ArrowBackend(pa.table({"nested": column, "n": [1, 2]}))
 
     assert backend.get_column_at(0) == expected
@@ -223,7 +245,7 @@ def test_nested_nanosecond_values_are_truncated_to_microseconds(
 
 def test_nanosecond_values_are_not_pandas_types() -> None:
     """pyarrow converts nanoseconds through pandas when it can import it."""
-    backend = ArrowBackend(
+    backend = ArrowBackend.from_pandas(
         pa.table({"ts": _ns_array([TS_NS], pa.timestamp("ns"))}).to_pandas()
     )
 
