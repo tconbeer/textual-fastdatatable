@@ -7,6 +7,8 @@ for arrives as its bare storage with `ARROW:extension:name` in the field's
 metadata -- which is how a geometry column reaches a table, as WKB tagged
 `geoarrow.wkb`, from duckdb's spatial extension and from GeoArrow producers
 generally, and a VARIANT, as the two binary buffers of `arrow.parquet.variant`.
+duckdb's BIGNUM arrives as `arrow.opaque`, which pyarrow does have a class for,
+but one that only names the vendor's type and leaves the value as its storage.
 Their bytes are not what a cell shows.
 
 `canonicalize()` gives such a field one of the types below, whose scalars convert
@@ -18,16 +20,20 @@ here is left as its storage, which is what pyarrow does with it too.
 
 from __future__ import annotations
 
+import json
+from decimal import Decimal
 from typing import Any, Callable, Iterable, cast
 
 import pyarrow as pa
 import pyarrow.types as pt
 
+from textual_fastdatatable.bignum import BignumError, bignum_to_python
 from textual_fastdatatable.variant import VariantError, variant_to_python
 from textual_fastdatatable.wkb import WkbError, wkb_to_wkt
 
 EXTENSION_NAME_KEY = b"ARROW:extension:name"
 EXTENSION_METADATA_KEY = b"ARROW:extension:metadata"
+OPAQUE_NAME = b"arrow.opaque"
 
 _NO_EXTENSION_METADATA = b"{}"
 
@@ -142,6 +148,92 @@ class ParquetVariantType(pa.ExtensionType):
         return ParquetVariantArray
 
 
+class DuckDBBignumScalar(pa.ExtensionScalar):
+    """A BIGNUM, whose Python value is the integer it holds."""
+
+    def as_py(self, **kwargs: Any) -> int | Decimal | bytes | None:
+        storage = self.value
+        if storage is None:
+            return None
+        return _bignum_or_bytes(storage.as_py())
+
+
+class DuckDBBignumArray(pa.ExtensionArray):
+    """A column of BIGNUMs, decoded from its storage in one pass."""
+
+    def to_pylist(self, **kwargs: Any) -> list[int | Decimal | bytes | None]:
+        # a scalar per row costs more than decoding it does
+        return [
+            None if data is None else _bignum_or_bytes(data)
+            for data in self.storage.to_pylist()
+        ]
+
+
+def _bignum_or_bytes(data: bytes) -> int | Decimal | bytes:
+    try:
+        return bignum_to_python(data)
+    except BignumError:
+        # tagged a BIGNUM but not one: the bytes are all it is known to be
+        return data
+
+
+_DUCKDB_BIGNUM_OPAQUE = b'{"type_name":"bignum","vendor_name":"DuckDB"}'
+_DUCKDB_VARINT_OPAQUE = b'{"type_name":"varint","vendor_name":"DuckDB"}'
+
+
+class DuckDBBignumType(pa.ExtensionType):
+    """duckdb's BIGNUM, an integer of any size, in duckdb's own encoding."""
+
+    def __init__(
+        self, storage_type: pa.DataType, serialized: bytes = _DUCKDB_BIGNUM_OPAQUE
+    ) -> None:
+        # held so that the type is written back out as the opaque type it was read
+        # from, which names duckdb's type
+        self._serialized = serialized
+        super().__init__(storage_type, OPAQUE_NAME.decode())
+
+    def __arrow_ext_serialize__(self) -> bytes:
+        return self._serialized
+
+    @classmethod
+    def __arrow_ext_deserialize__(
+        cls, storage_type: pa.DataType, serialized: bytes
+    ) -> "DuckDBBignumType":
+        return cls(storage_type, serialized)
+
+    def __arrow_ext_scalar_class__(self) -> type[pa.ExtensionScalar]:
+        return DuckDBBignumScalar
+
+    def __arrow_ext_class__(self) -> type[pa.ExtensionArray]:
+        return DuckDBBignumArray
+
+
+def _duckdb_varint(storage_type: pa.DataType, serialized: bytes) -> pa.DataType | None:
+    if not _is_binary(storage_type):
+        return None
+    # what duckdb 1.2 and 1.3 type the same VARINT as
+    return DuckDBBignumType(storage_type, _DUCKDB_VARINT_OPAQUE)
+
+
+_DUCKDB_BIGNUM_NAMES = {("DuckDB", "bignum"), ("DuckDB", "varint")}
+"""The (vendor_name, type_name) of duckdb's BIGNUM, which was VARINT before 1.4."""
+
+
+def _arrow_opaque(storage_type: pa.DataType, serialized: bytes) -> pa.DataType | None:
+    try:
+        names = json.loads(serialized)
+    except (ValueError, RecursionError):
+        return None
+    if not isinstance(names, dict) or not _is_binary(storage_type):
+        return None
+    vendor_type = (names.get("vendor_name"), names.get("type_name"))
+    if not all(isinstance(name, str) for name in vendor_type):
+        return None
+    if vendor_type not in _DUCKDB_BIGNUM_NAMES:
+        return None
+    return DuckDBBignumType(storage_type, serialized)
+
+
 def _is_binary(data_type: pa.DataType) -> bool:
     return (
         pt.is_binary(data_type)
@@ -168,6 +260,8 @@ def _parquet_variant(
 EXTENSION_TYPES: dict[bytes, Callable[[pa.DataType, bytes], pa.DataType | None]] = {
     b"geoarrow.wkb": _geoarrow_wkb,
     b"arrow.parquet.variant": _parquet_variant,
+    OPAQUE_NAME: _arrow_opaque,
+    b"duckdb.varint": _duckdb_varint,
 }
 """The extension name a field declares, to the type this package reads it as.
 
@@ -192,63 +286,105 @@ def canonicalize(data: pa.Table) -> pa.Table:
         [new or old for new, old in zip(new_fields, old_fields, strict=False)],
         metadata=data.schema.metadata,
     )
+    # Arrow casts one extension type to another only by way of its storage, so a
+    # field pyarrow read as `arrow.opaque` is first cast to that
+    storage_schema = pa.schema(
+        [_storage_field(field) or field for field in schema],
+        metadata=data.schema.metadata,
+    )
+    if storage_schema.types != data.schema.types:
+        data = data.cast(storage_schema)
     return data.cast(schema)
+
+
+_DECODED_TYPES = (GeoArrowWkbType, ParquetVariantType, DuckDBBignumType)
+
+
+def _storage_field(field: pa.Field) -> pa.Field | None:
+    """`field` with every type of this package's under it replaced by its storage."""
+    if isinstance(field.type, _DECODED_TYPES):
+        return field.with_type(field.type.storage_type)
+    nested_type = _rebuilt_type(field.type, _storage_field)
+    return None if nested_type is None else field.with_type(nested_type)
+
+
+def _declared_extension(field: pa.Field) -> tuple[bytes, bytes] | None:
+    """The extension name and metadata of a type `field` declares that this
+    pyarrow has not read as one of its own, or None if it declares none."""
+    if isinstance(field.type, pa.OpaqueType):
+        # pyarrow's class for it says only which vendor's type the storage holds
+        names = {
+            "type_name": field.type.type_name,
+            "vendor_name": field.type.vendor_name,
+        }
+        return OPAQUE_NAME, json.dumps(names, separators=(",", ":")).encode()
+    # an extension type pyarrow has any other class for has already been read as
+    # one, and what its values are is that class's to say
+    if isinstance(field.type, pa.BaseExtensionType):
+        return None
+    metadata = field.metadata or {}
+    extension_name = metadata.get(EXTENSION_NAME_KEY)
+    if extension_name is None:
+        return None
+    return extension_name, metadata.get(EXTENSION_METADATA_KEY, _NO_EXTENSION_METADATA)
 
 
 def _canonicalized_field(field: pa.Field) -> pa.Field | None:
     """`field` under the extension type it declares, or None if it declares none."""
-    metadata = field.metadata or {}
-    extension_name = metadata.get(EXTENSION_NAME_KEY)
-    # an extension type pyarrow has a class for has already been read as one, and
-    # what its values are is that class's to say
-    if extension_name is not None and not isinstance(field.type, pa.BaseExtensionType):
-        build = EXTENSION_TYPES.get(extension_name)
-        if build is not None:
-            extension_type = build(
-                field.type,
-                metadata.get(EXTENSION_METADATA_KEY, _NO_EXTENSION_METADATA),
+    declared = _declared_extension(field)
+    build = None if declared is None else EXTENSION_TYPES.get(declared[0])
+    if declared is not None and build is not None:
+        storage_type = field.type
+        if isinstance(storage_type, pa.BaseExtensionType):
+            storage_type = storage_type.storage_type
+        extension_type = build(storage_type, declared[1])
+        if extension_type is not None:
+            # the two keys are the type now, and pyarrow writes them back out
+            # from it, so carrying them as metadata too would duplicate them
+            metadata = field.metadata or {}
+            remaining = {
+                key: value
+                for key, value in metadata.items()
+                if key not in (EXTENSION_NAME_KEY, EXTENSION_METADATA_KEY)
+            }
+            return pa.field(
+                field.name, extension_type, field.nullable, remaining or None
             )
-            if extension_type is not None:
-                # the two keys are the type now, and pyarrow writes them back out
-                # from it, so carrying them as metadata too would duplicate them
-                remaining = {
-                    key: value
-                    for key, value in metadata.items()
-                    if key not in (EXTENSION_NAME_KEY, EXTENSION_METADATA_KEY)
-                }
-                return pa.field(
-                    field.name, extension_type, field.nullable, remaining or None
-                )
 
-    nested_type = _canonicalized_type(field.type)
+    nested_type = _rebuilt_type(field.type, _canonicalized_field)
     return None if nested_type is None else field.with_type(nested_type)
 
 
-def _canonicalized_type(data_type: pa.DataType) -> pa.DataType | None:
-    """`data_type` with its children canonicalized, or None if none changed."""
+_FieldRebuild = Callable[[pa.Field], "pa.Field | None"]
+
+
+def _rebuilt_type(data_type: pa.DataType, rebuild: _FieldRebuild) -> pa.DataType | None:
+    """`data_type` with `rebuild` applied to its children, or None if none changed."""
     if pt.is_struct(data_type):
         children = _children(data_type)
-        rebuilt = _canonicalized_children(children)
+        rebuilt = _rebuilt_children(children, rebuild)
         return None if rebuilt is None else pa.struct(rebuilt)
 
     if pt.is_map(data_type):
         # a map's one child is its entries struct, of exactly a key and an item
         entries = _children(data_type.field(0).type)
-        rebuilt = _canonicalized_children(entries)
+        rebuilt = _rebuilt_children(entries, rebuild)
         if rebuilt is None:
             return None
-        return pa.map_(rebuilt[0], rebuilt[1], keys_sorted=data_type.keys_sorted)
+        # duckdb 1.1 exports a key as nullable, which `pa.map_` refuses to build
+        key_field = rebuilt[0].with_nullable(False)
+        return pa.map_(key_field, rebuilt[1], keys_sorted=data_type.keys_sorted)
 
     if pt.is_list(data_type):
-        value_field = _canonicalized_field(data_type.value_field)
+        value_field = rebuild(data_type.value_field)
         return None if value_field is None else pa.list_(value_field)
 
     if pt.is_large_list(data_type):
-        value_field = _canonicalized_field(data_type.value_field)
+        value_field = rebuild(data_type.value_field)
         return None if value_field is None else pa.large_list(value_field)
 
     if pt.is_fixed_size_list(data_type):
-        value_field = _canonicalized_field(data_type.value_field)
+        value_field = rebuild(data_type.value_field)
         if value_field is None:
             return None
         return pa.list_(value_field, data_type.list_size)
@@ -260,10 +396,12 @@ def _children(data_type: pa.DataType) -> list[pa.Field]:
     return [data_type.field(i) for i in range(data_type.num_fields)]
 
 
-def _canonicalized_children(children: Iterable[pa.Field]) -> list[pa.Field] | None:
-    """Every child under the extension type it declares, or None if none does."""
+def _rebuilt_children(
+    children: Iterable[pa.Field], rebuild: _FieldRebuild
+) -> list[pa.Field] | None:
+    """Every child with `rebuild` applied, or None if none changed."""
     old_fields = list(children)
-    new_fields = [_canonicalized_field(field) for field in old_fields]
+    new_fields = [rebuild(field) for field in old_fields]
     if all(field is None for field in new_fields):
         return None
     return [new or old for new, old in zip(new_fields, old_fields, strict=False)]

@@ -146,8 +146,8 @@ column Arrow can cast, so what belongs on the fast side of
 
 An extension type gets a look before any of that, because it is a storage type with a
 meaning attached and only the type says which of the two a cell shows. `arrow.json`,
-`arrow.opaque` and every type this pyarrow has no class for leave the value as the
-storage's — pyarrow's own `ExtensionScalar.as_py` — so `_measure` recurses into
+an `arrow.opaque` other than duckdb's BIGNUM (see below) and every type this pyarrow
+has no class for leave the value as the storage's — pyarrow's own `ExtensionScalar.as_py` — so `_measure` recurses into
 `_extension_storage` and the column is measured on whichever path its storage belongs
 to (a json column is measured as the strings it is). `arrow.uuid` and `arrow.bool8`
 override `as_py`, and their values render at a width their Python type fixes
@@ -168,7 +168,16 @@ to duckdb's `ST_AsText` by a corpus duckdb generated; `variant.variant_to_python
 A variant's values are each of their own type, so its type sets `values_share_a_type =
 False` and `_measure` never measures its column from one fixed-width value; its array
 class decodes a whole column at once, since a scalar per row costs more than decoding
-it. Everything above then measures
+it. duckdb's BIGNUM is the one type pyarrow *does* have a class for that is read here
+too: it arrives as `arrow.opaque`, whose class only names the vendor's type
+(`type_name=bignum`, or `varint` before duckdb 1.4; duckdb 1.1 tags its storage
+`duckdb.varint` instead), so `_declared_extension` treats an `OpaqueType` as declaring
+`arrow.opaque` with the names as its metadata. `bignum.bignum_to_python` is
+stdlib-only and pinned to duckdb's VARCHAR cast by a corpus duckdb generated; a value
+with more digits than `sys.get_int_max_str_digits()` comes back as an equal `Decimal`,
+since formatting that int raises. Arrow casts one extension type to another only by way
+of its storage, so `canonicalize` casts such a table to `_storage_field`'s schema first.
+Everything above then measures
 and renders it through the extension-type path already described. `ArrowBackend.__init__`
 canonicalizes `self.data` and **not `source_data`**: the extension type says what a cell
 shows, while `source_data` is the caller's own table, which a consumer exports. The cast
@@ -276,8 +285,8 @@ message on `ctrl+c`/`super+c` — this requires the host app to be built with
     `Console` that module builds on its first measurement) on first call. Backends must
     not import rich or `format` at module scope, or construct a `Console` in `__init__`.
     A string column that is all ASCII never calls it, so an ASCII table never pays for
-    rich at all. `extension_types`, `wkb` and `variant`, which `backend` imports at module
-    scope, are held to the same rule: pyarrow and the stdlib only.
+    rich at all. `extension_types`, `wkb`, `variant` and `bignum`, which `backend`
+    imports at module scope, are held to the same rule: pyarrow and the stdlib only.
 
   `tests/unit_tests/test_lazy_imports.py` asserts all four, in a subprocess. To check by
   hand (all `False`; the import costs ~111 modules on 3.10 against the required deps, 443

@@ -158,3 +158,32 @@ async def test_a_geometry_column_renders_as_the_geometry_it_holds() -> None:
 
     assert rendered.strip() == "POINT (-117.93367 34.34613)"
     assert rendered_column.render_width == 29  # 27 characters, plus the cell padding
+
+
+@pytest.mark.asyncio
+async def test_a_bignum_column_renders_as_the_integers_it_holds() -> None:
+    """The whole path, for harlequin#1214: duckdb's BIGNUM shows its integer."""
+    big = 123456789012345678901234567890
+    storage = pa.array(
+        [
+            bytes.fromhex("80000d018ee90ff6c373e0ee4e3f0ad2"),  # duckdb's `big`
+            bytes.fromhex("7ffffefe"),  # duckdb's -1
+        ],
+        type=pa.binary(),
+    )
+    assert isinstance(storage, pa.Array)
+    extension_type = pa.opaque(pa.binary(), type_name="bignum", vendor_name="DuckDB")
+    data = pa.table({"n": pa.ExtensionArray.from_storage(extension_type, storage)})
+
+    table = DataTable(data=data)
+    app = TableApp(table)
+    async with app.run_test(size=(80, 6)):
+        (column,) = table.ordered_columns
+        first_row = table.render_line(1).text
+        second_row = table.render_line(2).text
+
+    assert first_row.strip() == f"{big:n}"
+    # right-aligned, as every other number is
+    assert second_row.rstrip().endswith(" -1")
+    assert len(second_row.rstrip()) == len(first_row.rstrip())
+    assert column.render_width == len(f"{big:n}") + 2  # plus the cell padding
