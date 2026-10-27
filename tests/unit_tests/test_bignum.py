@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ctypes
 import sys
 from decimal import Decimal
 from pathlib import Path
@@ -331,3 +332,98 @@ def test_a_table_holding_a_nested_bignum_sorts() -> None:
 
     assert backend.get_column_at(0) == [1, 2]
     assert backend.get_column_at(1) == [[-1], [2]]
+
+
+class _ArrowSchema(ctypes.Structure):
+    """The C data interface's ArrowSchema."""
+
+
+_ArrowSchema._fields_ = [
+    ("format", ctypes.c_char_p),
+    ("name", ctypes.c_char_p),
+    ("metadata", ctypes.c_void_p),
+    ("flags", ctypes.c_int64),
+    ("n_children", ctypes.c_int64),
+    ("children", ctypes.POINTER(ctypes.POINTER(_ArrowSchema))),
+    ("dictionary", ctypes.c_void_p),
+    ("release", ctypes.c_void_p),
+    ("private_data", ctypes.c_void_p),
+]
+
+
+class _ArrowArray(ctypes.Structure):
+    """The C data interface's ArrowArray."""
+
+    _fields_ = [
+        ("length", ctypes.c_int64),
+        ("null_count", ctypes.c_int64),
+        ("offset", ctypes.c_int64),
+        ("n_buffers", ctypes.c_int64),
+        ("n_children", ctypes.c_int64),
+        ("buffers", ctypes.c_void_p),
+        ("children", ctypes.c_void_p),
+        ("dictionary", ctypes.c_void_p),
+        ("release", ctypes.c_void_p),
+        ("private_data", ctypes.c_void_p),
+    ]
+
+
+_ARROW_FLAG_NULLABLE = 2
+
+
+def with_nullable_map_keys(batch: pa.RecordBatch) -> pa.RecordBatch:
+    """`batch` with every map column's key marked nullable, as duckdb 1.1 exports it.
+
+    pyarrow builds no such map itself, but imports one over the C data interface;
+    this gives the schema duckdb 1.1.3 does for `map(['k'], [1::varint])`."""
+    schema, array = _ArrowSchema(), _ArrowArray()
+    batch._export_to_c(ctypes.addressof(array), ctypes.addressof(schema))
+    for index in range(schema.n_children):
+        column = schema.children[index].contents
+        if column.format == b"+m":
+            entries = column.children[0].contents
+            entries.children[0].contents.flags |= _ARROW_FLAG_NULLABLE
+    return pa.RecordBatch._import_from_c(
+        ctypes.addressof(array), ctypes.addressof(schema)
+    )
+
+
+VARINT_1_1_FIELD = pa.field("n", pa.binary(), metadata=DUCKDB_1_1_VARINT)
+
+
+@pytest.mark.parametrize(
+    ("key_field", "item_field", "value", "expected"),
+    [
+        pytest.param(
+            pa.field("key", pa.string(), nullable=False),
+            VARINT_1_1_FIELD.with_name("value"),
+            [("k", encode(1)), ("j", None)],
+            [("k", 1), ("j", None)],
+            id="item",
+        ),
+        pytest.param(
+            VARINT_1_1_FIELD.with_name("key").with_nullable(False),
+            pa.field("value", pa.string()),
+            [(encode(-256), "v")],
+            [(-256, "v")],
+            id="key",
+        ),
+    ],
+)
+def test_a_map_with_a_nullable_key_is_converted(
+    key_field: pa.Field, item_field: pa.Field, value: object, expected: object
+) -> None:
+    """duckdb 1.1 exports a map's key as nullable, which `pa.map_` refuses."""
+    map_type = pa.map_(key_field, item_field)
+    column = pa.array([value], type=map_type)
+    assert isinstance(column, pa.Array)
+    batch = with_nullable_map_keys(
+        pa.RecordBatch.from_arrays([column], schema=pa.schema([("m", map_type)]))
+    )
+    data = pa.Table.from_batches([batch])
+    assert data.schema.field(0).type.field(0).type.field(0).nullable
+
+    backend = ArrowBackend(data)
+
+    assert backend.get_cell_at(0, 0) == expected
+    assert backend.source_data.column(0).to_pylist() == [value]
