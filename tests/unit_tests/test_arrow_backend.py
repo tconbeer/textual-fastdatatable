@@ -266,6 +266,70 @@ def test_updating_a_nanosecond_cell_keeps_the_other_rows() -> None:
     assert backend.get_cell_at(1, 0) == datetime(2020, 1, 1)
 
 
+def test_updating_a_nanosecond_cell_indexes_rows_as_other_columns_do() -> None:
+    column = _ns_array([TS_NS, TS_NS], pa.timestamp("ns"))
+    backend = ArrowBackend(pa.table({"ns": column}))
+
+    backend.update_cell(-1, 0, datetime(2020, 1, 1))
+    assert backend.get_column_at(0) == [TS_US, datetime(2020, 1, 1)]
+
+    with pytest.raises(IndexError):
+        backend.update_cell(2, 0, datetime(2020, 1, 1))
+    with pytest.raises(IndexError):
+        backend.update_cell(-3, 0, datetime(2020, 1, 1))
+
+
+BEFORE_1970 = datetime(1969, 12, 31, 23, 59, 59, 999999)
+EPOCH = datetime(1970, 1, 1)
+LAST_NS_TIMESTAMP = datetime(2262, 4, 11, 23, 47, 16, 854775)
+"""2**63 - 1 nanoseconds, truncated to microseconds."""
+
+
+@pytest.mark.parametrize(
+    "column,expected",
+    [
+        (
+            _ns_array([-1, MAX_64BIT_INT], pa.timestamp("ns")).dictionary_encode(),
+            [BEFORE_1970, datetime.max],
+        ),
+        (
+            _nested(
+                [[-1], [MAX_64BIT_INT]],
+                pa.list_(pa.int64()),
+                pa.list_(pa.timestamp("ns")),
+            ),
+            [[EPOCH], [LAST_NS_TIMESTAMP]],
+        ),
+        (
+            _nested(
+                [{"ts": -1}, {"ts": MAX_64BIT_INT}],
+                pa.struct([("ts", pa.int64())]),
+                pa.struct([("ts", pa.timestamp("ns"))]),
+            ),
+            [{"ts": EPOCH}, {"ts": LAST_NS_TIMESTAMP}],
+        ),
+        (
+            pa.UnionArray.from_sparse(
+                _array([0, 0], pa.int8()),
+                [_ns_array([-1, MAX_64BIT_INT], pa.timestamp("ns"))],
+                field_names=["ts"],
+            ),
+            [EPOCH, LAST_NS_TIMESTAMP],
+        ),
+    ],
+    ids=["dictionary", "list", "struct", "union"],
+)
+def test_every_getter_converts_a_nanosecond_value_alike(
+    column: pa.Array, expected: list[Any]
+) -> None:
+    """Only a column's own timestamps, or a dictionary's, are floored and infinite."""
+    backend = ArrowBackend(pa.table({"c": column}))
+
+    assert backend.get_column_at(0) == expected
+    assert [backend.get_row_at(i)[0] for i in range(2)] == expected
+    assert [backend.get_cell_at(i, 0) for i in range(2)] == expected
+
+
 def test_a_row_with_an_overflowing_value_keeps_its_other_values() -> None:
     column = pa.array([MAX_64BIT_INT], type=pa.int64()).cast(pa.timestamp("s"))
     backend = ArrowBackend(pa.table({"ts": column, "n": [5]}))
