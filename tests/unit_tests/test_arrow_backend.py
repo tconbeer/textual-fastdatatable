@@ -5,6 +5,7 @@ import sys
 from collections.abc import Sequence
 from datetime import datetime, time, timedelta, timezone
 from pathlib import Path
+from typing import Any
 
 import pyarrow as pa
 import pyarrow.parquet as pq
@@ -105,102 +106,142 @@ def test_negative_timestamps() -> None:
 TS_NS = 1_704_164_645_123_456_789
 """2024-01-02 03:04:05.123456789 UTC, which a `datetime` cannot hold."""
 
+TS_US = datetime(2024, 1, 2, 3, 4, 5, 123456)
+
+
+def _ns_array(values: list[int | None], data_type: pa.DataType) -> pa.Array:
+    array = pa.array(values, type=pa.int64()).cast(data_type)
+    assert isinstance(array, pa.Array)
+    return array
+
 
 @pytest.mark.parametrize(
-    "column_type,stored,expected_type,expected_text",
+    "column_type,stored,expected",
     [
-        (pa.timestamp("ns"), TS_NS, datetime, "2024-01-02 03:04:05.123456789"),
+        (pa.timestamp("ns"), TS_NS, TS_US),
         (
             pa.timestamp("ns", tz="America/New_York"),
             TS_NS,
-            datetime,
-            "2024-01-01 22:04:05.123456789-05:00",
+            TS_US.replace(tzinfo=timezone.utc),
         ),
-        (pa.time64("ns"), 11_045_123_456_789, time, "03:04:05.123456789"),
-        (pa.duration("ns"), 123_456_789, timedelta, "0:00:00.123456789"),
-        (pa.duration("ns"), -1, timedelta, "-1 day, 23:59:59.999999999"),
-        (pa.timestamp("ns"), -1, datetime, "1969-12-31 23:59:59.999999999"),
+        (pa.time64("ns"), 11_045_123_456_789, time(3, 4, 5, 123456)),
+        (pa.duration("ns"), 123_456_789, timedelta(microseconds=123456)),
+        (pa.timestamp("ns"), -1, datetime(1969, 12, 31, 23, 59, 59, 999999)),
     ],
 )
-def test_nanosecond_values_keep_their_nanoseconds(
-    column_type: pa.DataType, stored: int, expected_type: type, expected_text: str
+def test_nanosecond_values_are_truncated_to_microseconds(
+    column_type: pa.DataType, stored: int, expected: Any
 ) -> None:
-    column = pa.array([stored, None], type=pa.int64()).cast(column_type)
-    backend = ArrowBackend(pa.table({"ns": column, "n": [1, 2]}))
+    backend = ArrowBackend(
+        pa.table({"ns": _ns_array([stored, None], column_type), "n": [1, 2]})
+    )
 
     cell = backend.get_cell_at(0, 0)
-    assert isinstance(cell, expected_type)
-    assert str(cell) == expected_text
-    assert [str(value) for value in backend.get_row_at(0)] == [expected_text, "1"]
+    assert cell == expected
+    assert type(cell) is type(expected)
+    assert backend.get_row_at(0) == [expected, 1]
     assert backend.get_row_at(1) == [None, 2]
-    assert [str(value) for value in backend.get_column_at(0)] == [
-        expected_text,
-        "None",
-    ]
+    assert backend.get_column_at(0) == [expected, None]
     assert backend.column_content_widths[0] == measure_width(cell)
 
 
-def test_nanosecond_values_a_datetime_can_hold_are_datetimes() -> None:
-    column = pa.array([1_000, 0], type=pa.int64()).cast(pa.timestamp("ns"))
-    backend = ArrowBackend(pa.table({"ns": column}))
+def test_nanosecond_timestamps_keep_their_time_zone() -> None:
+    column_type = pa.timestamp("ns", tz="America/New_York")
+    backend = ArrowBackend(pa.table({"ns": _ns_array([TS_NS], column_type)}))
 
-    assert backend.get_column_at(0) == [
-        datetime(1970, 1, 1, microsecond=1),
-        datetime(1970, 1, 1),
-    ]
-    assert type(backend.get_cell_at(0, 0)) is datetime
+    cell = backend.get_cell_at(0, 0)
+    assert cell.utcoffset() == timedelta(hours=-5)
+    assert cell.isoformat() == "2024-01-01T22:04:05.123456-05:00"
 
 
 def test_infinite_nanosecond_timestamps() -> None:
     """duckdb stores `'infinity'::timestamp_ns` as the largest int64."""
-    column = pa.array([MAX_64BIT_INT, -MAX_64BIT_INT], type=pa.int64()).cast(
-        pa.timestamp("ns")
-    )
+    column = _ns_array([MAX_64BIT_INT, -MAX_64BIT_INT], pa.timestamp("ns"))
     backend = ArrowBackend(pa.table({"ns": column}))
 
     assert backend.get_column_at(0) == [datetime.max, datetime.min]
     assert backend.get_row_at(0) == [datetime.max]
     assert backend.get_cell_at(1, 0) is datetime.min
+    assert backend.column_content_widths == [26]
 
 
-def test_nested_nanosecond_values_keep_their_nanoseconds() -> None:
-    timestamp = pa.scalar(TS_NS, type=pa.timestamp("ns"))
-    table = pa.table(
-        {
-            "list": pa.array([[timestamp, None], None]),
-            "struct": pa.array(
-                [{"ts": timestamp, "n": 1}, None],
-                type=pa.struct([("ts", pa.timestamp("ns")), ("n", pa.int64())]),
-            ),
-            "map": pa.array(
-                [[("k", timestamp)], []],
-                type=pa.map_(pa.string(), pa.timestamp("ns")),
-            ),
-        }
+def _sparse_union(timestamps: pa.Array) -> pa.Array:
+    return pa.UnionArray.from_sparse(
+        pa.array([0, 1], type=pa.int8()),
+        [timestamps, pa.array([7, 8])],
+        field_names=["ts", "n"],
     )
-    backend = ArrowBackend(table)
 
-    expected = "2024-01-02 03:04:05.123456789"
-    nested_list, nested_struct, nested_map = backend.get_row_at(0)
-    assert [str(value) for value in nested_list] == [expected, "None"]
-    assert str(nested_struct["ts"]) == expected
-    assert nested_struct["n"] == 1
-    assert [(key, str(value)) for key, value in nested_map] == [("k", expected)]
-    assert backend.get_row_at(1) == [None, None, []]
-    assert backend.get_column_at(0)[1] is None
-    assert str(backend.get_cell_at(0, 2)[0][1]) == expected
-    assert all(width > 0 for width in backend.column_content_widths)
+
+def _dense_union(timestamps: pa.Array) -> pa.Array:
+    return pa.UnionArray.from_dense(
+        pa.array([0, 1], type=pa.int8()),
+        pa.array([0, 0], type=pa.int32()),
+        [timestamps.slice(0, 1), pa.array([7])],
+        field_names=["ts", "n"],
+    )
+
+
+@pytest.mark.parametrize(
+    "build,expected",
+    [
+        (lambda ts: pa.ListArray.from_arrays([0, 2, 2], ts), [[TS_US, TS_US], []]),
+        (
+            lambda ts: pa.StructArray.from_arrays([ts, pa.array([1, 2])], ["ts", "n"]),
+            [{"ts": TS_US, "n": 1}, {"ts": TS_US, "n": 2}],
+        ),
+        (
+            lambda ts: pa.MapArray.from_arrays([0, 1, 2], pa.array(["a", "b"]), ts),
+            [[("a", TS_US)], [("b", TS_US)]],
+        ),
+        (
+            lambda ts: pa.DictionaryArray.from_arrays(pa.array([0, 0]), ts),
+            [TS_US, TS_US],
+        ),
+        (_sparse_union, [TS_US, 8]),
+        (_dense_union, [TS_US, 7]),
+        (
+            lambda ts: pa.RunEndEncodedArray.from_arrays(
+                pa.array([2], type=pa.int32()), ts.slice(0, 1)
+            ),
+            [TS_US, TS_US],
+        ),
+    ],
+    ids=["list", "struct", "map", "dictionary", "sparse_union", "dense_union", "ree"],
+)
+def test_nested_nanosecond_values_are_truncated_to_microseconds(
+    build: Any, expected: list[Any]
+) -> None:
+    column = build(_ns_array([TS_NS, TS_NS], pa.timestamp("ns")))
+    backend = ArrowBackend(pa.table({"nested": column, "n": [1, 2]}))
+
+    assert backend.get_column_at(0) == expected
+    assert backend.get_row_at(1) == [expected[1], 2]
+    assert backend.get_cell_at(0, 0) == expected[0]
+    assert backend.column_content_widths[0] > 0
+
+
+def test_nanosecond_values_are_not_pandas_types() -> None:
+    """pyarrow converts nanoseconds through pandas when it can import it."""
+    backend = ArrowBackend(
+        pa.table({"ts": _ns_array([TS_NS], pa.timestamp("ns"))}).to_pandas()
+    )
+
+    assert type(backend.get_cell_at(0, 0)) is datetime
+    assert type(backend.get_row_at(0)[0]) is datetime
+    assert type(backend.get_column_at(0)[0]) is datetime
 
 
 def test_updating_a_nanosecond_cell_keeps_the_other_rows() -> None:
-    column = pa.array([TS_NS, TS_NS], type=pa.int64()).cast(pa.timestamp("ns"))
+    column = _ns_array([TS_NS, TS_NS], pa.timestamp("ns"))
     backend = ArrowBackend(pa.table({"ns": column}))
 
     backend.update_cell(1, 0, datetime(2020, 1, 1))
 
-    assert str(backend.get_cell_at(0, 0)) == "2024-01-02 03:04:05.123456789"
+    stored = backend.data.column(0)
+    assert stored.type == pa.timestamp("ns")
+    assert stored.cast(pa.int64()).to_pylist() == [TS_NS, 1_577_836_800_000_000_000]
     assert backend.get_cell_at(1, 0) == datetime(2020, 1, 1)
-    assert backend.data.column(0).type == pa.timestamp("ns")
 
 
 def test_a_row_with_an_overflowing_value_keeps_its_other_values() -> None:
@@ -211,7 +252,7 @@ def test_a_row_with_an_overflowing_value_keeps_its_other_values() -> None:
 
 
 def test_nanosecond_values_without_pandas() -> None:
-    """pyarrow converts nanoseconds through pandas, when it can import it."""
+    """The crash in tconbeer/harlequin#1207, which needs pandas to be missing."""
     script = (
         "import importlib.abc, sys\n"
         "class NoPandas(importlib.abc.MetaPathFinder):\n"
@@ -234,5 +275,5 @@ def test_nanosecond_values_without_pandas() -> None:
     )
 
     assert proc.returncode == 0, proc.stderr
-    expected = "2024-01-02 03:04:05.123456789"
+    expected = "2024-01-02 03:04:05.123456"
     assert proc.stdout.split("\n") == ["23", expected, expected, expected, "False", ""]

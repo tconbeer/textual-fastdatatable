@@ -7,11 +7,9 @@ from . import (
     Date32Type,
     Date64Type,
     DictionaryType,
-    DurationType,
     FixedSizeListType,
     ListType,
     MapType,
-    Time64Type,
     TimestampType,
 )
 
@@ -45,6 +43,7 @@ def is_date64(t: DataType) -> bool:
     return False
 
 def is_time(t: DataType) -> bool: ...
-def is_time64(t: DataType) -> TypeGuard[Time64Type]: ...
-def is_duration(t: DataType) -> TypeGuard[DurationType]: ...
-def is_timestamp(t: DataType) -> TypeGuard[TimestampType]: ...
+def is_timestamp(t: DataType) -> bool:
+    if isinstance(t, TimestampType):
+        return True
+    return False
