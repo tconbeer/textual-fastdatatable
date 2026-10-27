@@ -166,6 +166,13 @@ def subtract(
     *,
     memory_pool: MemoryPool | None = None,
 ) -> _PandasConvertible: ...
+def multiply(
+    x: _PandasConvertible,
+    y: _PandasConvertible | int,
+    /,
+    *,
+    memory_pool: MemoryPool | None = None,
+) -> _PandasConvertible: ...
 def divide(
     dividend: _PandasConvertible,
     divisor: _PandasConvertible | int,

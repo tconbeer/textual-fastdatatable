@@ -236,6 +236,16 @@ class UnionArray(Array):
         field_names: list[str] | None = None,
     ) -> UnionArray: ...
 
+class DictionaryArray(Array):
+    @staticmethod
+    def from_arrays(
+        indices: Array, dictionary: Array, ordered: bool = False
+    ) -> DictionaryArray: ...
+    @property
+    def indices(self) -> Array: ...
+    @property
+    def dictionary(self) -> Array: ...
+
 class RunEndEncodedArray(Array):
     @staticmethod
     def from_arrays(run_ends: Array, values: Array) -> RunEndEncodedArray: ...

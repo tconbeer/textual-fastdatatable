@@ -71,6 +71,17 @@ for large immutable data.
 `max_rows` truncates the displayed data while `source_data`/`source_row_count` keep
 reporting the full input — the widget shows both counts.
 
+With pandas installed, pyarrow returns pandas types for nanosecond timestamps and
+durations and truncates a `time64[ns]`; without it, it raises for any of them with digits
+past the microsecond ([tconbeer/harlequin#1207](https://github.com/tconbeer/harlequin/issues/1207)).
+So `ArrowBackend` casts every column that is or nests one to microseconds before it
+becomes Python (`_microsecond_type`, `_in_microseconds`), and takes apart value by value
+the types Arrow cannot cast, like unions. A column's own timestamps, and a dictionary's,
+are floored and keep duckdb's ±infinity as ∞; nested ones are truncated, in every getter
+alike. `_microsecond_types` caches the target type per column, so every mutation that
+changes the schema must keep it in step; `update_cell` splices into such a column, so
+the stored nanoseconds survive.
+
 ### Column widths
 
 `column_content_widths` is the hot path for first paint. Each backend computes it with
@@ -178,14 +189,6 @@ its rows, so a type whose values are not its storage cannot go through it: a geo
 WKT would return to WKB storage as the bytes of its own text, rewriting rows the caller
 never touched. It raises for those, on the same `_extension_value_is_its_storage` test,
 rather than letting the round trip happen.
-
-With pandas installed, pyarrow returns pandas types for nanosecond timestamps and
-durations and truncates a `time64[ns]`; without it, it raises for any of them with digits
-past the microsecond ([tconbeer/harlequin#1207](https://github.com/tconbeer/harlequin/issues/1207)).
-So `ArrowBackend._to_pylist` casts every column that is or nests one to microseconds
-(`_microsecond_type`, `_in_microseconds`) before converting it, and takes apart value by
-value the types Arrow cannot cast, like unions; `update_cell` splices into such a column,
-so the stored nanoseconds survive.
 
 Every UDF is registered through `_register_udf`, which registers a name at most once:
 `pc.register_scalar_function` raises for a name that is taken **and drops a reference to
