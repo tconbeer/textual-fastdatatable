@@ -222,7 +222,7 @@ _DUCKDB_BIGNUM_NAMES = {("DuckDB", "bignum"), ("DuckDB", "varint")}
 def _arrow_opaque(storage_type: pa.DataType, serialized: bytes) -> pa.DataType | None:
     try:
         names = json.loads(serialized)
-    except ValueError:
+    except (ValueError, RecursionError):
         return None
     if not isinstance(names, dict) or not _is_binary(storage_type):
         return None
@@ -371,7 +371,9 @@ def _rebuilt_type(data_type: pa.DataType, rebuild: _FieldRebuild) -> pa.DataType
         rebuilt = _rebuilt_children(entries, rebuild)
         if rebuilt is None:
             return None
-        return pa.map_(rebuilt[0], rebuilt[1], keys_sorted=data_type.keys_sorted)
+        # duckdb 1.1 exports a key as nullable, which `pa.map_` refuses to build
+        key_field = rebuilt[0].with_nullable(False)
+        return pa.map_(key_field, rebuilt[1], keys_sorted=data_type.keys_sorted)
 
     if pt.is_list(data_type):
         value_field = rebuild(data_type.value_field)
