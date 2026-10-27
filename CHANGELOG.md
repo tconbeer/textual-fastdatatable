@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.19.4] - 2026-10-27
+
 - Variant columns now display the value they hold, like `{'a': 1, 'b': [1, 2]}`, instead
   of their binary buffers. Any column tagged with the `arrow.parquet.variant` Arrow
   extension type, as duckdb 2.0 returns a `VARIANT`, is decoded; a backend's
@@ -275,7 +277,8 @@ All notable changes to this project will be documented in this file.
 
 - Initial release. Adds DataTable and ArrowBackend, which is 1000x faster for datasets of 500k records or more.
 
-[unreleased]: https://github.com/tconbeer/textual-fastdatatable/compare/0.19.3...HEAD
+[unreleased]: https://github.com/tconbeer/textual-fastdatatable/compare/0.19.4...HEAD
+[0.19.4]: https://github.com/tconbeer/textual-fastdatatable/compare/0.19.3...0.19.4
 [0.19.3]: https://github.com/tconbeer/textual-fastdatatable/compare/0.19.2...0.19.3
 [0.19.2]: https://github.com/tconbeer/textual-fastdatatable/compare/0.19.1...0.19.2
 [0.19.1]: https://github.com/tconbeer/textual-fastdatatable/compare/0.19.0...0.19.1
