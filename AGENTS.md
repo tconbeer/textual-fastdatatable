@@ -146,8 +146,8 @@ column Arrow can cast, so what belongs on the fast side of
 
 An extension type gets a look before any of that, because it is a storage type with a
 meaning attached and only the type says which of the two a cell shows. `arrow.json`,
-`arrow.opaque` and every type this pyarrow has no class for leave the value as the
-storage's — pyarrow's own `ExtensionScalar.as_py` — so `_measure` recurses into
+an `arrow.opaque` other than duckdb's BIGNUM (see below) and every type this pyarrow
+has no class for leave the value as the storage's — pyarrow's own `ExtensionScalar.as_py` — so `_measure` recurses into
 `_extension_storage` and the column is measured on whichever path its storage belongs
 to (a json column is measured as the strings it is). `arrow.uuid` and `arrow.bool8`
 override `as_py`, and their values render at a width their Python type fixes

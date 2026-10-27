@@ -1162,13 +1162,14 @@ class ArrowBackend(DataTableBackend[pa.Table]):
 
         # an extension type is a storage type with a meaning attached, and which of
         # the two a cell shows is the type's to say. Where the meaning is only an
-        # annotation -- `arrow.json`, `arrow.opaque`, and any type this pyarrow has
-        # no class for -- the value is the storage's value, so the storage is what
-        # gets measured, on whichever path suits it. Where it is not, the value is a
-        # Python object of its own, and `arrow.uuid`'s and `arrow.bool8`'s render at
-        # a width their type fixes, so one value measures the column. Anything else
-        # falls through to the value-by-value path below. A pyarrow that gives one of
-        # these a class of its own only costs a measurement; it cannot mismeasure.
+        # annotation -- `arrow.json`, an `arrow.opaque` other than duckdb's BIGNUM,
+        # and any type this pyarrow has no class for -- the value is the storage's
+        # value, so the storage is what gets measured, on whichever path suits it.
+        # Where it is not, the value is a Python object of its own, and
+        # `arrow.uuid`'s and `arrow.bool8`'s render at a width their type fixes, so
+        # one value measures the column. Anything else falls through to the
+        # value-by-value path below. A pyarrow that gives one of these a class of its
+        # own only costs a measurement; it cannot mismeasure.
         if isinstance(arr.type, pa.BaseExtensionType):
             present = arr.drop_null()
             if not len(present):
