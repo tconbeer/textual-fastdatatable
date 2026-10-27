@@ -179,20 +179,13 @@ WKT would return to WKB storage as the bytes of its own text, rewriting rows the
 never touched. It raises for those, on the same `_extension_value_is_its_storage` test,
 rather than letting the round trip happen.
 
-pyarrow converts a nanosecond `timestamp`, `time64` or `duration` through pandas when it
-can import it, and raises when it cannot and a value has digits past its microsecond
-([tconbeer/harlequin#1207](https://github.com/tconbeer/harlequin/issues/1207)). So
-`ArrowBackend` never asks it to: `_to_pylist` and `_to_python` are where every value
-becomes Python, and they hand each type that is or nests one
-(`nanoseconds.holds_nanoseconds`) to `nanoseconds.nanosecond_values`, which converts the
-microseconds through Arrow, time zone and all, and keeps the rest on a `datetime`,
-`time` or `timedelta` subclass. A cell renders as its base type does; `str()` keeps every
-digit. `±(2**63 - 1)` is duckdb's ±infinity and becomes `datetime.max`/`min`, as an
-overflowing timestamp of any other unit does. `update_cell` splices the new value into
-such a column rather than writing it back from Python, which would drop every other
-row's nanoseconds. `get_row_at` keeps pyarrow's one-call conversion for a table holding
-none, and checks once per table, since walking a schema costs about as much as
-converting a row.
+With pandas installed, pyarrow returns pandas types for nanosecond timestamps and
+durations and truncates a `time64[ns]`; without it, it raises for any of them with digits
+past the microsecond ([tconbeer/harlequin#1207](https://github.com/tconbeer/harlequin/issues/1207)).
+So `ArrowBackend._to_pylist` casts every column that is or nests one to microseconds
+(`_microsecond_type`, `_in_microseconds`) before converting it, and takes apart value by
+value the types Arrow cannot cast, like unions; `update_cell` splices into such a column,
+so the stored nanoseconds survive.
 
 Every UDF is registered through `_register_udf`, which registers a name at most once:
 `pc.register_scalar_function` raises for a name that is taken **and drops a reference to
@@ -266,9 +259,10 @@ message on `ctrl+c`/`super+c` — this requires the host app to be built with
     convenience import at the top of `__init__.py` silently undoes this.
   - `pyarrow.parquet` is imported inside `ArrowBackend.from_parquet`, its only use site.
     Any module-scope `pq.` use undoes this.
-  - `pyarrow.compute` is imported inside the four functions that use it — `_register_udf`,
-    `_measure_cells`, `_measure_strings` and `ArrowBackend._measure` — because every use
-    of it in this module measures a column, so a consumer that only normalizes through
+  - `pyarrow.compute` is imported inside the five functions that use it — `_register_udf`,
+    `_measure_cells`, `_measure_strings`, `ArrowBackend._measure` and `_in_microseconds` —
+    because every use of it in this module measures a column or converts one of
+    nanosecond timestamps to Python, so a consumer that only normalizes through
     `create_backend()` never needs it. It costs ~68ms, more than `pyarrow` itself, and
     halves what importing `backend` costs without the `polars` extra (133ms → 68ms).
     Measuring is unaffected: the import is a `sys.modules` lookup once per column, and
@@ -279,8 +273,8 @@ message on `ctrl+c`/`super+c` — this requires the host app to be built with
     `Console` that module builds on its first measurement) on first call. Backends must
     not import rich or `format` at module scope, or construct a `Console` in `__init__`.
     A string column that is all ASCII never calls it, so an ASCII table never pays for
-    rich at all. `extension_types`, `wkb`, `variant` and `nanoseconds`, which `backend`
-    imports at module scope, are held to the same rule: pyarrow and the stdlib only.
+    rich at all. `extension_types`, `wkb` and `variant`, which `backend` imports at module
+    scope, are held to the same rule: pyarrow and the stdlib only.
 
   `tests/unit_tests/test_lazy_imports.py` asserts all four, in a subprocess. To check by
   hand (all `False`; the import costs ~111 modules on 3.10 against the required deps, 443

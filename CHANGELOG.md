@@ -9,7 +9,9 @@ All notable changes to this project will be documented in this file.
   extension type, as duckdb 2.0 returns a `VARIANT`, is decoded; a backend's
   `source_data` still holds the original buffers.
 - Nanosecond timestamps, times and durations (like duckdb's `TIMESTAMP_NS`) no longer
-  crash the table when pandas is not installed, and their values now keep every digit
+  crash the table when pandas is not installed. Their values are now always a plain
+  `datetime`, `time` or `timedelta`, truncated to microseconds, where with pandas
+  installed they used to be a `pd.Timestamp` or `pd.Timedelta`
   ([tconbeer/harlequin#1207](https://github.com/tconbeer/harlequin/issues/1207)).
 
 ## [0.19.3] - 2026-09-16
