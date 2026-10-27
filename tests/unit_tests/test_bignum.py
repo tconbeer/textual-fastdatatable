@@ -149,6 +149,35 @@ def test_duckdb_1_1s_tagged_varint_sorts() -> None:
     assert backend.get_column_at(0) == [-1, 10**30]
 
 
+def test_an_opaque_type_pyarrow_has_not_read_as_one_is_read_too() -> None:
+    """Built by hand, a field can carry the opaque type as metadata instead."""
+    metadata = {
+        EXTENSION_NAME_KEY: b"arrow.opaque",
+        EXTENSION_METADATA_KEY: b'{"type_name": "bignum", "vendor_name": "DuckDB"}',
+    }
+    field = pa.field("n", pa.binary(), metadata=metadata)
+    data = pa.Table.from_arrays(
+        [pa.array([encode(-7)], type=pa.binary())], schema=pa.schema([field])
+    )
+
+    assert canonicalize(data).column(0).to_pylist() == [-7]
+
+
+@pytest.mark.parametrize(
+    "serialized",
+    [b"", b"not json", b"\xff", b"[]", b'{"type_name": ["bignum"]}', b"{}"],
+    ids=["empty", "not json", "not utf-8", "not an object", "not text", "no names"],
+)
+def test_opaque_metadata_that_names_no_bignum_is_left_alone(serialized: bytes) -> None:
+    metadata = {EXTENSION_NAME_KEY: b"arrow.opaque", EXTENSION_METADATA_KEY: serialized}
+    field = pa.field("n", pa.binary(), metadata=metadata)
+    data = pa.Table.from_arrays(
+        [pa.array([encode(1)], type=pa.binary())], schema=pa.schema([field])
+    )
+
+    assert canonicalize(data) is data
+
+
 @pytest.mark.parametrize(
     "extension_type",
     [

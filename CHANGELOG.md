@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+- duckdb `BIGNUM` (formerly `VARINT`) columns now display the integer they hold, like
+  `123456789012345678901234567890`, instead of their bytes, including when nested in a
+  list, struct, or map; a backend's `source_data` still holds the original bytes
+  ([tconbeer/harlequin#1214](https://github.com/tconbeer/harlequin/issues/1214)).
+
 ## [0.19.4] - 2026-10-27
 
 - Variant columns now display the value they hold, like `{'a': 1, 'b': [1, 2]}`, instead

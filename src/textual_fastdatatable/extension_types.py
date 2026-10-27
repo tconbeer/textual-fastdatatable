@@ -224,10 +224,12 @@ def _arrow_opaque(storage_type: pa.DataType, serialized: bytes) -> pa.DataType |
         names = json.loads(serialized)
     except ValueError:
         return None
-    if not isinstance(names, dict):
+    if not isinstance(names, dict) or not _is_binary(storage_type):
         return None
     vendor_type = (names.get("vendor_name"), names.get("type_name"))
-    if vendor_type not in _DUCKDB_BIGNUM_NAMES or not _is_binary(storage_type):
+    if not all(isinstance(name, str) for name in vendor_type):
+        return None
+    if vendor_type not in _DUCKDB_BIGNUM_NAMES:
         return None
     return DuckDBBignumType(storage_type, serialized)
 
