@@ -24,7 +24,7 @@ dependencies = [
 
 [project.optional-dependencies]
 
-polars = ["polars>=1,<2"]
+polars = ["polars>=1,<3"]
 
 
 [dependency-groups]
@@ -35,7 +35,7 @@ dev = [
     # scripts/benchmark.py loads the same data with pandas and polars, to compare
     # this widget against Textual's built-in DataTable
     "pandas>=2,<3",
-    "polars>=1,<2",
+    "polars>=1,<3",
 ]
 static = [
     "ruff>=0.14,<0.15",
@@ -46,7 +46,7 @@ test = [
     "pytest>=7.3.1,<9.0.0",
     "pytest-asyncio==1.2.0",
     "pytest-textual-snapshot==1.1.0",
-    "polars==1.34.0",
+    "polars==2.0.0",
     "pandas>=2,<3", # to test that pandas DataFrames are accepted
 ]
 
